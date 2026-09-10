@@ -43,19 +43,27 @@ def _extract_policy(args: argparse.Namespace) -> RoutePolicy | None:
     no_data_coll = bool(getattr(args, "no_data_collection", False))
     max_cost_in = float(getattr(args, "max_cost_in", 0.0) or 0.0)
     max_cost_out = float(getattr(args, "max_cost_out", 0.0) or 0.0)
+    openrouter_providers = getattr(args, "openrouter_provider", None)
+    openrouter_ignore = getattr(args, "openrouter_ignore", None) or []
 
-    if not any([providers, exclude_providers, routes, exclude_routes, zdr, no_data_coll, max_cost_in > 0, max_cost_out > 0]):
+    if not any([
+        providers, exclude_providers, routes, exclude_routes,
+        zdr, no_data_coll, max_cost_in > 0, max_cost_out > 0,
+        openrouter_providers, openrouter_ignore,
+    ]):
         return None
 
     return RoutePolicy(
-        allowed_providers=providers if providers else None,
-        excluded_providers=exclude_providers,
+        allowed_transports=providers if providers else None,
+        excluded_transports=exclude_providers,
         allowed_routes=routes if routes else None,
         excluded_routes=exclude_routes,
         zdr=zdr,
         allow_data_collection=not no_data_coll,
         max_cost_per_1k_input=max_cost_in,
         max_cost_per_1k_output=max_cost_out,
+        openrouter_providers=openrouter_providers,
+        openrouter_ignore=openrouter_ignore,
     )
 
 
@@ -129,7 +137,34 @@ def _resolve_task(reference: str, store: BulkLanesStore) -> TaskSpec:
 
 def cmd_routes(args: argparse.Namespace) -> None:
     catalog = RouteCatalog(db_path=_store(args).path)
-    refresh = catalog.refresh_all() if args.refresh else None
+    action = getattr(args, "action", "list")
+    route_id = getattr(args, "route_id", None) or getattr(args, "add", None)
+
+    if action == "add" or route_id:
+        if not route_id:
+            print("Error: route_id required to add a route")
+            raise SystemExit(1)
+        provider = getattr(args, "provider", None) or (route_id.split("/", 1)[0] if "/" in route_id else "openai_compatible")
+        is_free = bool(getattr(args, "free", False))
+        in_cost = float(getattr(args, "input_cost", 0.0) or 0.0)
+        out_cost = float(getattr(args, "output_cost", 0.0) or 0.0)
+        price_state = "price_observed_zero" if (is_free or (in_cost == 0 and out_cost == 0)) else "unknown"
+        created = catalog.add_route(
+            route_id=route_id,
+            provider=provider,
+            cost_per_1k_input=in_cost,
+            cost_per_1k_output=out_cost,
+            enabled=not getattr(args, "disable", False),
+            price_state=price_state,
+            verification_source="manual_registration",
+        )
+        if args.json:
+            _emit({"route": created.model_dump(mode="json"), "status": "added"}, True)
+        else:
+            print(f"Added route '{created.id}' (provider: {created.provider}, price_state: {created.price_state}, enabled: {created.enabled})")
+        return
+
+    refresh = catalog.refresh_all() if (getattr(args, "refresh", False) or action == "refresh") else None
     routes = catalog.get_routes(free_only=not args.all, include_disabled=args.all)
     if args.json:
         _emit({"routes": routes, "count": len(routes), "refresh": refresh}, True)
@@ -327,8 +362,9 @@ def cmd_schema(args: argparse.Namespace) -> None:
         "output": ModelOutput,
         "packet": CleanPacket,
     }
+    from .store import get_database_schema_sql
     schema = (
-        {"schema_version": SCHEMA_VERSION, "sql": SCHEMA_SQL}
+        {"schema_version": SCHEMA_VERSION, "sql": get_database_schema_sql()}
         if args.kind == "database"
         else models[args.kind].model_json_schema(by_alias=True)
     )
@@ -361,7 +397,7 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     opencode = shutil.which("opencode")
     openrouter_key = bool(os.environ.get("OPENROUTER_API_KEY"))
     checks = [
-        DoctorCheck(name="database", ok=store.schema_version() == "1", detail=f"SQLite schema {store.schema_version()} at {store.path.resolve()}"),
+        DoctorCheck(name="database", ok=store.schema_version() in ("1", "2"), detail=f"SQLite schema {store.schema_version()} at {store.path.resolve()}"),
         DoctorCheck(name="opencode", ok=bool(opencode), detail=opencode or "opencode not found in PATH"),
         DoctorCheck(name="openrouter", ok=openrouter_key, detail="OPENROUTER_API_KEY configured" if openrouter_key else "optional key not configured"),
         DoctorCheck(name="routes", ok=bool(observed_routes), detail=f"{len(observed_routes)} enabled observed-zero routes"),
@@ -396,14 +432,16 @@ def _input_options(parser: argparse.ArgumentParser) -> None:
 
 
 def _policy_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--provider", action="append", help="Allow specific provider (can repeat)")
-    parser.add_argument("--exclude-provider", action="append", help="Exclude specific provider (can repeat)")
+    parser.add_argument("--transport", "--provider", dest="provider", action="append", help="Allow specific transport provider (can repeat)")
+    parser.add_argument("--exclude-transport", "--exclude-provider", dest="exclude_provider", action="append", help="Exclude specific transport provider")
     parser.add_argument("--route", action="append", help="Allow specific route ID (can repeat)")
     parser.add_argument("--exclude-route", action="append", help="Exclude specific route ID (can repeat)")
     parser.add_argument("--zdr", action="store_true", help="Require Zero Data Retention upstream")
     parser.add_argument("--no-data-collection", action="store_true", help="Deny provider data collection")
     parser.add_argument("--max-cost-in", type=float, default=0.0, help="Max cost per 1k input tokens (default: 0.0)")
     parser.add_argument("--max-cost-out", type=float, default=0.0, help="Max cost per 1k output tokens (default: 0.0)")
+    parser.add_argument("--openrouter-provider", action="append", help="Upstream OpenRouter inference host preference (e.g. Together, DeepInfra)")
+    parser.add_argument("--openrouter-ignore", action="append", help="Upstream OpenRouter inference host to ignore")
 
 
 def _common(parser: argparse.ArgumentParser, *, json_output: bool = True, database: bool = True) -> None:
@@ -432,7 +470,15 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--force", action="store_true", help="Update managed skill files when the destination differs")
     setup.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
 
-    routes = commands.add_parser("routes", help="List or refresh model routes")
+    routes = commands.add_parser("routes", help="List, add, or refresh model routes")
+    routes.add_argument("action", nargs="?", choices=["list", "add", "refresh"], default="list", help="Action: list, add, or refresh")
+    routes.add_argument("route_id", nargs="?", help="Route ID to add (e.g. ollama/llama3.2, groq/llama-3.3-70b)")
+    routes.add_argument("--add", help="Route ID to add")
+    routes.add_argument("--provider", help="Provider for added route (e.g. ollama, openai_compatible, groq)")
+    routes.add_argument("--free", action="store_true", help="Mark added route as observed zero price")
+    routes.add_argument("--input-cost", type=float, default=0.0, help="Cost per 1k input tokens")
+    routes.add_argument("--output-cost", type=float, default=0.0, help="Cost per 1k output tokens")
+    routes.add_argument("--disable", action="store_true", help="Register route as disabled")
     routes.add_argument("--all", action="store_true", help="Include non-zero, candidate, and disabled routes")
     routes.add_argument("--refresh", action="store_true", help="Contact providers and update route observations")
     _common(routes)

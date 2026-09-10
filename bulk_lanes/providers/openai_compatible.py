@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import time
 import uuid
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 import httpx
 from .base import BaseProvider
 
@@ -24,17 +24,42 @@ class OpenAICompatibleProvider(BaseProvider):
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         provider_name: str = "openai_compatible",
+        is_free: Optional[bool] = None,
     ):
+        # Service-specific environment defaults
+        env_prefix = provider_name.upper()
         configured_url = (
             base_url
+            or os.environ.get(f"{env_prefix}_BASE_URL")
             or os.environ.get("OPENAI_COMPATIBLE_BASE_URL")
-            or os.environ.get("OLLAMA_BASE_URL")
-            or os.environ.get("LMSTUDIO_BASE_URL")
-            or "http://localhost:11434/v1"
         )
+        if not configured_url:
+            if provider_name == "groq":
+                configured_url = "https://api.groq.com/openai/v1"
+            elif provider_name == "cerebras":
+                configured_url = "https://api.cerebras.ai/v1"
+            elif provider_name == "lmstudio":
+                configured_url = "http://localhost:1234/v1"
+            elif provider_name == "vllm":
+                configured_url = "http://localhost:8000/v1"
+            elif provider_name == "ollama":
+                configured_url = "http://localhost:11434/v1"
+            else:
+                configured_url = "http://localhost:11434/v1"
+
         self.base_url = configured_url.rstrip("/")
-        self.api_key = api_key or os.environ.get("OPENAI_COMPATIBLE_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+        self.api_key = (
+            api_key
+            or os.environ.get(f"{env_prefix}_API_KEY")
+            or os.environ.get("OPENAI_COMPATIBLE_API_KEY")
+            or os.environ.get("OPENAI_API_KEY", "")
+        )
         self.provider_name = provider_name
+        self.is_local = (
+            is_free
+            if is_free is not None
+            else any(h in self.base_url for h in ("localhost", "127.0.0.1", "0.0.0.0", "::1"))
+        )
 
     def run_prompt(
         self,
@@ -55,14 +80,18 @@ class OpenAICompatibleProvider(BaseProvider):
                 model_name = model_name[len(prefix):]
                 break
 
+        # Cost-safety: only assert reported_zero if verified local/free; otherwise unknown
+        default_cost = 0.0 if self.is_local else None
+        default_cost_status = "reported_zero" if self.is_local else "unknown"
+
         receipt = {
             "id": rid,
             "session_id": session_id,
             "provider": self.provider_name,
             "requested_route": route_id,
             "status": "failed",
-            "cost": 0.0,
-            "cost_status": "reported_zero",
+            "cost": default_cost,
+            "cost_status": default_cost_status,
             "usage": None,
             "error": None,
             "error_type": None,
@@ -127,6 +156,12 @@ class OpenAICompatibleProvider(BaseProvider):
                 if isinstance(reported_cost, (int, float)):
                     receipt["cost"] = float(reported_cost)
                     receipt["cost_status"] = "reported_zero" if reported_cost == 0 else "billed"
+                elif self.is_local:
+                    receipt["cost"] = 0.0
+                    receipt["cost_status"] = "reported_zero"
+                else:
+                    receipt["cost"] = None
+                    receipt["cost_status"] = "unknown"
 
                 receipt["status"] = "complete"
                 receipt["duration_seconds"] = time.time() - started

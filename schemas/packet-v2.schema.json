@@ -293,6 +293,30 @@
     "RoutePolicy": {
       "additionalProperties": false,
       "properties": {
+        "allowed_transports": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional allowlist of bulk-lanes transport names",
+          "title": "Allowed Transports"
+        },
+        "excluded_transports": {
+          "description": "Blocklist of bulk-lanes transport names",
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Transports",
+          "type": "array"
+        },
         "allowed_providers": {
           "anyOf": [
             {
@@ -306,11 +330,11 @@
             }
           ],
           "default": null,
-          "description": "Optional allowlist of provider names",
+          "description": "Deprecated alias for allowed_transports",
           "title": "Allowed Providers"
         },
         "excluded_providers": {
-          "description": "Blocklist of provider names",
+          "description": "Deprecated alias for excluded_transports",
           "items": {
             "type": "string"
           },
@@ -366,6 +390,52 @@
           "minimum": 0,
           "title": "Max Cost Per 1K Output",
           "type": "number"
+        },
+        "openrouter_providers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Upstream OpenRouter providers to prioritize",
+          "title": "Openrouter Providers"
+        },
+        "openrouter_ignore": {
+          "description": "Upstream OpenRouter providers to ignore",
+          "items": {
+            "type": "string"
+          },
+          "title": "Openrouter Ignore",
+          "type": "array"
+        },
+        "openrouter_order": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Upstream OpenRouter provider ordering",
+          "title": "Openrouter Order"
+        },
+        "openrouter_allow_fallbacks": {
+          "default": true,
+          "description": "Whether OpenRouter may fall back to other providers",
+          "title": "Openrouter Allow Fallbacks",
+          "type": "boolean"
         }
       },
       "title": "RoutePolicy",

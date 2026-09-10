@@ -120,6 +120,37 @@ class RouteCatalog:
             matched.append(r)
         return matched
 
+    def add_route(
+        self,
+        route_id: str,
+        provider: str,
+        cost_per_1k_input: float = 0.0,
+        cost_per_1k_output: float = 0.0,
+        enabled: bool = True,
+        price_state: Optional[str] = None,
+        verification_source: str = "manual_registration",
+    ) -> RouteInfo:
+        """Register or update a route in the catalog."""
+        if price_state is None:
+            price_state = (
+                PriceState.PRICE_OBSERVED_ZERO.value
+                if (cost_per_1k_input == 0 and cost_per_1k_output == 0)
+                else PriceState.UNKNOWN.value
+            )
+        route = RouteInfo(
+            id=route_id,
+            provider=provider,
+            enabled=enabled,
+            price_state=price_state,
+            cost_per_1k_input=cost_per_1k_input if cost_per_1k_input is not None else 0.0,
+            cost_per_1k_output=cost_per_1k_output if cost_per_1k_output is not None else 0.0,
+            last_verified=time.strftime("%Y-%m-%d"),
+            verification_source=verification_source,
+        )
+        self.store.upsert_route(route)
+        self.data = self._load()
+        return route
+
     def set_cooldown(self, route_id: str, duration_sec: float, reason: str = "") -> None:
         """Temporarily cool down a route after rate limits or transient errors."""
         self.store.set_cooldown(route_id, time.time() + duration_sec, reason)
@@ -127,6 +158,55 @@ class RouteCatalog:
     def is_cooled_down(self, route_id: str) -> bool:
         """Check whether a route is currently in cooldown."""
         return self.store.is_route_cooled_down(route_id)
+
+    def get_earliest_cooldown_retry(self, route_ids: Optional[List[str]] = None) -> float:
+        """Return the number of seconds until the earliest cooled-down route is available again."""
+        exp = self.store.get_earliest_cooldown_expiry(route_ids)
+        if exp:
+            return max(0.0, exp - time.time())
+        return 0.0
+
+    def refresh_from_openai_compatible(
+        self,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        provider_name: str = "openai_compatible",
+    ) -> int:
+        """Discover routes from an OpenAI-compatible /models endpoint (e.g. Ollama, LM Studio, vLLM)."""
+        from .providers.openai_compatible import OpenAICompatibleProvider
+        provider = OpenAICompatibleProvider(base_url=base_url, api_key=api_key, provider_name=provider_name)
+        headers = {}
+        if provider.api_key:
+            headers["Authorization"] = f"Bearer {provider.api_key}"
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.get(f"{provider.base_url}/models", headers=headers)
+                if resp.status_code != 200:
+                    return 0
+                data = resp.json()
+                models = data.get("data", [])
+                count = 0
+                is_local = provider.is_local
+                price_state = PriceState.PRICE_OBSERVED_ZERO.value if is_local else PriceState.UNKNOWN.value
+                cost = 0.0 if is_local else 0.0
+                for m in models:
+                    mid = m.get("id")
+                    if not mid:
+                        continue
+                    rid = f"{provider_name}/{mid}"
+                    self.add_route(
+                        route_id=rid,
+                        provider=provider_name,
+                        cost_per_1k_input=cost,
+                        cost_per_1k_output=cost,
+                        enabled=True,
+                        price_state=price_state,
+                        verification_source=f"{provider_name} /models discovery (local={is_local})",
+                    )
+                    count += 1
+                return count
+        except Exception:
+            return 0
 
     def get_ladder(
         self,
@@ -137,7 +217,14 @@ class RouteCatalog:
         policy: Optional[Any] = None,
     ) -> List[str]:
         """Returns an intelligently prioritized list of route IDs based on historical performance and eval scores."""
-        routes = self.get_routes(provider=provider, free_only=free_only)
+        effective_free_only = free_only
+        if policy and (
+            getattr(policy, "max_cost_per_1k_input", 0.0) > 0
+            or getattr(policy, "max_cost_per_1k_output", 0.0) > 0
+            or getattr(policy, "allowed_routes", None)
+        ):
+            effective_free_only = False
+        routes = self.get_routes(provider=provider, free_only=effective_free_only)
         if not routes:
             return []
         from .scoring import filter_and_rank_routes
@@ -297,5 +384,10 @@ class RouteCatalog:
             results["openrouter"] = self.refresh_from_openrouter()
         except Exception as e:
             results["openrouter_error"] = str(e)
+
+        try:
+            results["openai_compatible"] = self.refresh_from_openai_compatible()
+        except Exception as e:
+            results["openai_compatible_error"] = str(e)
 
         return results

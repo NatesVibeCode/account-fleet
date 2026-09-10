@@ -1,3 +1,4 @@
+import httpx
 import pytest
 from bulk_lanes.catalog import PriceState, RouteCatalog, RouteCircuitBreaker, classify_price_state
 
@@ -55,3 +56,45 @@ def test_packaged_routes_are_disabled_hints_until_refreshed(tmp_path):
     catalog = RouteCatalog(db_path=tmp_path / "state.db")
     assert catalog.get_routes(free_only=True) == []
     assert catalog.get_routes(free_only=False, include_disabled=True)
+
+
+def test_add_route_explicit_registration(tmp_path):
+    catalog = RouteCatalog(db_path=tmp_path / "state.db")
+    route = catalog.add_route(
+        route_id="custom/my-model",
+        provider="openai_compatible",
+        cost_per_1k_input=0.0,
+        cost_per_1k_output=0.0,
+        enabled=True,
+        price_state="price_observed_zero",
+    )
+    assert route.id == "custom/my-model"
+    assert route.provider == "openai_compatible"
+    assert route.price_state == "price_observed_zero"
+
+    routes = catalog.get_routes(free_only=True)
+    assert any(r["id"] == "custom/my-model" for r in routes)
+
+
+def test_refresh_from_openai_compatible_local_is_free(tmp_path, monkeypatch):
+    catalog = RouteCatalog(db_path=tmp_path / "state.db")
+
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {"data": [{"id": "llama3.2"}, {"id": "mistral"}]}
+
+    monkeypatch.setattr(
+        httpx.Client,
+        "get",
+        lambda *args, **kwargs: MockResponse(),
+    )
+
+    count = catalog.refresh_from_openai_compatible(
+        base_url="http://localhost:11434/v1",
+    )
+    assert count == 2
+    free_routes = catalog.get_routes(free_only=True)
+    route_ids = {r["id"] for r in free_routes}
+    assert "openai_compatible/llama3.2" in route_ids
+    assert "openai_compatible/mistral" in route_ids

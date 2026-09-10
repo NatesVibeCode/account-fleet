@@ -35,7 +35,6 @@ class RouteScorer:
         for r in routes:
             rid = r["id"]
 
-            # If actively cooled down, assign zero score
             if rid in active_cooldowns and active_cooldowns[rid] > now:
                 scores[rid] = 0.0
                 continue
@@ -46,21 +45,26 @@ class RouteScorer:
                 base_score = 0.55
             else:
                 total = stat["total"]
-                completed = stat["completed"]
-                rate_limits = stat["rate_limits"]
-                avg_duration = stat["avg_duration"]
+                completed = stat.get("completed", 0)
+                malformed = stat.get("malformed", 0)
+                schema_violations = stat.get("schema_violations", 0)
+                grounding_failures = stat.get("grounding_failures", 0)
+                rate_limits = stat.get("rate_limits", 0)
+                avg_duration = stat.get("avg_duration", 0.0)
 
-                # Laplace-smoothed success rate
-                success_rate = (completed + 1.0) / (total + 2.0)
+                # Laplace-smoothed verified rate
+                verified_rate = (completed + 1.0) / (total + 2.0)
 
-                # Rate limit penalty
+                # Penalties based on granular intermediate failure modes
+                grounding_penalty = max(0.2, 1.0 - (grounding_failures / max(1, total)) * 0.6)
+                malformed_penalty = max(0.3, 1.0 - ((malformed + schema_violations) / max(1, total)) * 0.5)
                 rl_ratio = rate_limits / max(1, total)
                 rate_limit_factor = max(0.2, 1.0 - (rl_ratio * 0.5))
 
                 # Latency factor (penalize slow models over 30s)
                 latency_factor = max(0.3, 1.0 - (min(30.0, avg_duration) / 30.0) * 0.4)
 
-                base_score = success_rate * rate_limit_factor * latency_factor
+                base_score = verified_rate * grounding_penalty * malformed_penalty * rate_limit_factor * latency_factor
 
             # Combine with benchmark evaluation score if available
             if rid in latest_evals:
@@ -80,17 +84,25 @@ def filter_and_rank_routes(
     policy: Optional[RoutePolicy] = None,
     seed: str = "",
 ) -> List[str]:
-    """Filter routes by policy and rank by intelligent composite score."""
+    """Filter routes by policy and hard cooldown, then rank by intelligent composite score."""
+    active_cooldowns = store.get_active_cooldowns()
+    now = time.time()
     filtered: List[Dict[str, Any]] = []
 
     for r in routes:
         rid = r["id"]
         prov = (r.get("provider") or rid.split("/", 1)[0]).lower()
 
+        # HARD COOLDOWN: Completely remove route from eligibility while cooldown is active
+        if rid in active_cooldowns and active_cooldowns[rid] > now:
+            continue
+
         if policy:
-            if policy.allowed_providers and prov not in [p.lower() for p in policy.allowed_providers]:
+            allowed_t = policy.allowed_transports or policy.allowed_providers
+            excluded_t = policy.excluded_transports or policy.excluded_providers
+            if allowed_t and prov not in [p.lower() for p in allowed_t]:
                 continue
-            if policy.excluded_providers and prov in [p.lower() for p in policy.excluded_providers]:
+            if excluded_t and prov in [p.lower() for p in excluded_t]:
                 continue
             if policy.allowed_routes and rid not in policy.allowed_routes:
                 continue

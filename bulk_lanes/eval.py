@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from pydantic import ValidationError
 
@@ -69,15 +71,54 @@ class RouteEvaluator:
             if dur is not None and dur > 0:
                 durations.append(dur)
 
+            attempt_rec = {
+                "attempt_id": f"eval:{route_id}:{item.item_id}:{uuid.uuid4().hex[:8]}",
+                "run_id": f"eval:{self.task.name}",
+                "batch_id": item.item_id,
+                "lease_attempt_number": 1,
+                "route_id": route_id,
+                "provider": receipt.get("provider") or provider_hint or "unknown",
+                "task_name": self.task.name,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "duration_seconds": receipt.get("duration_seconds"),
+                "cost": receipt.get("cost"),
+                "cost_status": receipt.get("cost_status"),
+                "usage": receipt.get("usage"),
+                "retry_after": receipt.get("retry_after"),
+                "error_type": receipt.get("error_type"),
+                "error_message": receipt.get("error"),
+                "transport_status": "success",
+                "parse_status": "skipped",
+                "schema_status": "skipped",
+                "grounding_status": "skipped",
+                "outcome": "failed",
+                "verified": False,
+                "counts_against_budget": 1,
+            }
+
             if not ok:
                 errors += 1
-                if receipt.get("error_type") == "rate_limit" or "429" in str(receipt.get("error", "")):
+                is_rl = receipt.get("error_type") == "rate_limit" or "429" in str(receipt.get("error", ""))
+                if is_rl:
                     rate_limits += 1
+                attempt_rec.update({
+                    "transport_status": "rate_limit" if is_rl else "failed",
+                    "outcome": "rate_limited" if is_rl else "transport_failed",
+                    "counts_against_budget": 0 if is_rl else 1,
+                })
+                self.store.record_inference_attempt(attempt_rec)
                 continue
 
             parsed = clean_llm_json(response_text)
             if not parsed or not isinstance(parsed, dict):
                 errors += 1
+                attempt_rec.update({
+                    "transport_status": "success",
+                    "parse_status": "malformed_json",
+                    "outcome": "parse_failed",
+                    "error_message": "Malformed JSON",
+                })
+                self.store.record_inference_attempt(attempt_rec)
                 continue
 
             try:
@@ -85,8 +126,16 @@ class RouteEvaluator:
                 for extracted in candidate.items:
                     self.task.validate_claims(extracted.claims)
                 schema_passed += 1
-            except (ValidationError, ValueError):
+            except (ValidationError, ValueError) as exc:
                 errors += 1
+                attempt_rec.update({
+                    "transport_status": "success",
+                    "parse_status": "success",
+                    "schema_status": "schema_violation",
+                    "outcome": "schema_failed",
+                    "error_message": str(exc),
+                })
+                self.store.record_inference_attempt(attempt_rec)
                 continue
 
             import hashlib
@@ -104,9 +153,27 @@ class RouteEvaluator:
 
             if output_items is None:
                 errors += 1
+                attempt_rec.update({
+                    "transport_status": "success",
+                    "parse_status": "success",
+                    "schema_status": "success",
+                    "grounding_status": "grounding_failed",
+                    "outcome": "grounding_failed",
+                    "error_message": ground_err,
+                })
+                self.store.record_inference_attempt(attempt_rec)
                 continue
 
             grounding_passed += 1
+            attempt_rec.update({
+                "transport_status": "success",
+                "parse_status": "success",
+                "schema_status": "success",
+                "grounding_status": "success",
+                "outcome": "verified",
+                "verified": True,
+            })
+            self.store.record_inference_attempt(attempt_rec)
 
             # Check correctness if expected claims provided in item metadata
             if expected_claims_key and expected_claims_key in item.metadata:

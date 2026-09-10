@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from bulk_lanes.models import CandidateModelOutput, CleanPacket, InputItem, ModelOutput, TaskSpec
-from bulk_lanes.store import SCHEMA_PATH, SCHEMA_SQL
+from bulk_lanes.store import MIGRATION_002_PATH, SCHEMA_PATH, SCHEMA_SQL
 
 
 def test_published_json_schemas_match_runtime_models():
@@ -21,3 +21,5 @@ def test_published_json_schemas_match_runtime_models():
 def test_database_schema_has_one_packaged_authority():
     assert SCHEMA_PATH.is_file()
     assert SCHEMA_SQL == SCHEMA_PATH.read_text()
+    assert MIGRATION_002_PATH.is_file()
+    assert "inference_attempts" in MIGRATION_002_PATH.read_text()

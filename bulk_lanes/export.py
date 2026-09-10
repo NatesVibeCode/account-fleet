@@ -38,9 +38,9 @@ def export_clean_csv(
             if k not in claim_keys:
                 claim_keys.append(k)
 
-    fieldnames = ["item_id", "source_uri", "source_digest"]
-    fieldnames.extend([f"claim_{k}" for k in claim_keys])
-    fieldnames.extend(["quote_count", "primary_quote_text", "primary_quote_slice"])
+    fieldnames = ["item_id"]
+    fieldnames.extend(claim_keys)
+    fieldnames.extend(["primary_quote_text", "quote_count", "source_uri", "source_digest"])
 
     with open(output_path, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -48,20 +48,19 @@ def export_clean_csv(
         for rec in verified_records:
             row = {
                 "item_id": rec.item_id,
+                "primary_quote_text": rec.quotes[0].text if rec.quotes else "",
+                "quote_count": len(rec.quotes),
                 "source_uri": rec.source_uri or "",
                 "source_digest": rec.source_digest,
-                "quote_count": len(rec.quotes),
-                "primary_quote_text": rec.quotes[0].text if rec.quotes else "",
-                "primary_quote_slice": rec.quotes[0].slice_id if rec.quotes else "",
             }
             for k in claim_keys:
                 val = rec.claims.get(k)
                 if isinstance(val, (dict, list)):
-                    row[f"claim_{k}"] = json.dumps(val, ensure_ascii=False)
+                    row[k] = json.dumps(val, ensure_ascii=False)
                 elif val is not None:
-                    row[f"claim_{k}"] = str(val)
+                    row[k] = str(val)
                 else:
-                    row[f"claim_{k}"] = ""
+                    row[k] = ""
             writer.writerow(row)
 
     return output_path

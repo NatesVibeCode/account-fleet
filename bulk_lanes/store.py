@@ -28,11 +28,19 @@ from .models import (
 )
 
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "migrations" / "001_control_plane.sql"
 SCHEMA_SQL = SCHEMA_PATH.read_text()
 MIGRATION_002_PATH = Path(__file__).resolve().parent / "migrations" / "002_intelligence_and_policy.sql"
+
+
+def get_database_schema_sql() -> str:
+    parts = [SCHEMA_SQL]
+    if MIGRATION_002_PATH.is_file():
+        parts.append(MIGRATION_002_PATH.read_text())
+    return "\n".join(parts)
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -573,35 +581,125 @@ class BulkLanesStore:
             rows = connection.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
-    def get_route_history_stats(self, task_name: str | None = None) -> dict[str, dict[str, Any]]:
-        query = """
-            SELECT requested_route, provider,
-                   count(*) as total,
-                   sum(case when status='complete' then 1 else 0 end) as completed,
-                   sum(case when error like '%429%' or error like '%rate limit%' then 1 else 0 end) as rate_limits,
-                   avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
-                   sum(case when cost is not null then cost else 0 end) as total_cost
-            FROM model_runs
-        """
-        params: list[Any] = []
-        if task_name:
-            query += " WHERE run_id IN (SELECT r.run_id FROM runs r JOIN task_revisions t ON t.revision_id=r.task_revision_id WHERE t.task_name=?)"
-            params.append(task_name)
-        query += " GROUP BY requested_route, provider"
+    def get_earliest_cooldown_expiry(self, route_ids: list[str] | None = None) -> float | None:
+        now = time.time()
+        query = "SELECT MIN(cooldown_until) FROM route_cooldowns WHERE cooldown_until > ?"
+        params: list[Any] = [now]
+        if route_ids:
+            placeholders = ",".join("?" * len(route_ids))
+            query += f" AND route_id IN ({placeholders})"
+            params.extend(route_ids)
         with self.connect() as connection:
+            row = connection.execute(query, params).fetchone()
+            val = row[0] if row else None
+        return float(val) if val is not None else None
+
+    def record_inference_attempt(self, attempt: dict[str, Any]) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """INSERT OR REPLACE INTO inference_attempts(
+                    attempt_id,run_id,batch_id,lease_attempt_number,route_id,provider,
+                    task_name,started_at,duration_seconds,transport_status,parse_status,
+                    schema_status,grounding_status,outcome,verified,error_type,
+                    error_message,retry_after,cost,cost_status,usage_json,
+                    counts_against_budget,created_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    attempt["attempt_id"],
+                    attempt.get("run_id"),
+                    attempt.get("batch_id"),
+                    attempt.get("lease_attempt_number"),
+                    attempt["route_id"],
+                    attempt.get("provider", "unknown"),
+                    attempt.get("task_name"),
+                    attempt.get("started_at", now_iso()),
+                    attempt.get("duration_seconds"),
+                    attempt.get("transport_status", "success"),
+                    attempt.get("parse_status", "success"),
+                    attempt.get("schema_status", "success"),
+                    attempt.get("grounding_status", "success"),
+                    attempt.get("outcome", "verified" if attempt.get("verified") else "failed"),
+                    1 if attempt.get("verified") else 0,
+                    attempt.get("error_type"),
+                    attempt.get("error_message"),
+                    attempt.get("retry_after"),
+                    attempt.get("cost"),
+                    attempt.get("cost_status"),
+                    json.dumps(attempt.get("usage")) if attempt.get("usage") else None,
+                    attempt.get("counts_against_budget", 1),
+                    attempt.get("created_at", now_iso()),
+                ),
+            )
+
+    def get_route_history_stats(self, task_name: str | None = None) -> dict[str, dict[str, Any]]:
+        with self.connect() as connection:
+            has_attempts = connection.execute("SELECT count(*) FROM inference_attempts").fetchone()[0]
+            if has_attempts > 0:
+                query = """
+                    SELECT route_id, provider,
+                           count(*) as total,
+                           sum(case when outcome='verified' then 1 else 0 end) as completed,
+                           sum(case when parse_status='malformed_json' then 1 else 0 end) as malformed,
+                           sum(case when schema_status='schema_violation' then 1 else 0 end) as schema_violations,
+                           sum(case when grounding_status='grounding_failed' then 1 else 0 end) as grounding_failures,
+                           sum(case when transport_status='rate_limit' or error_type='rate_limit' then 1 else 0 end) as rate_limits,
+                           avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
+                           sum(case when cost is not null then cost else 0 end) as total_cost
+                    FROM inference_attempts
+                """
+                params: list[Any] = []
+                if task_name:
+                    query += " WHERE task_name=?"
+                    params.append(task_name)
+                query += " GROUP BY route_id, provider"
+                rows = connection.execute(query, params).fetchall()
+                stats = {}
+                for r in rows:
+                    stats[r["route_id"]] = {
+                        "route_id": r["route_id"],
+                        "provider": r["provider"],
+                        "total": r["total"],
+                        "completed": r["completed"] or 0,
+                        "malformed": r["malformed"] or 0,
+                        "schema_violations": r["schema_violations"] or 0,
+                        "grounding_failures": r["grounding_failures"] or 0,
+                        "rate_limits": r["rate_limits"] or 0,
+                        "avg_duration": float(r["avg_duration"] or 0.0),
+                        "total_cost": float(r["total_cost"] or 0.0),
+                    }
+                return stats
+
+            # Fallback to model_runs for legacy data
+            query = """
+                SELECT requested_route, provider,
+                       count(*) as total,
+                       sum(case when status='complete' then 1 else 0 end) as completed,
+                       sum(case when error like '%429%' or error like '%rate limit%' then 1 else 0 end) as rate_limits,
+                       avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
+                       sum(case when cost is not null then cost else 0 end) as total_cost
+                FROM model_runs
+            """
+            params: list[Any] = []
+            if task_name:
+                query += " WHERE run_id IN (SELECT r.run_id FROM runs r JOIN task_revisions t ON t.revision_id=r.task_revision_id WHERE t.task_name=?)"
+                params.append(task_name)
+            query += " GROUP BY requested_route, provider"
             rows = connection.execute(query, params).fetchall()
-        stats = {}
-        for r in rows:
-            stats[r["requested_route"]] = {
-                "route_id": r["requested_route"],
-                "provider": r["provider"],
-                "total": r["total"],
-                "completed": r["completed"] or 0,
-                "rate_limits": r["rate_limits"] or 0,
-                "avg_duration": float(r["avg_duration"] or 0.0),
-                "total_cost": float(r["total_cost"] or 0.0),
-            }
-        return stats
+            stats = {}
+            for r in rows:
+                stats[r["requested_route"]] = {
+                    "route_id": r["requested_route"],
+                    "provider": r["provider"],
+                    "total": r["total"],
+                    "completed": r["completed"] or 0,
+                    "malformed": 0,
+                    "schema_violations": 0,
+                    "grounding_failures": 0,
+                    "rate_limits": r["rate_limits"] or 0,
+                    "avg_duration": float(r["avg_duration"] or 0.0),
+                    "total_cost": float(r["total_cost"] or 0.0),
+                }
+            return stats
 
     def get_run_status(self, run_id: str) -> RunStatusReport:
         with self.connect() as connection:
@@ -621,22 +719,45 @@ class BulkLanesStore:
                     (run_id,),
                 ).fetchall()
             }
-            verified_items_row = connection.execute(
-                """SELECT count(distinct r.result_id) FROM current_batch_results c
+            res_rows = connection.execute(
+                """SELECT r.result_json FROM current_batch_results c
                    JOIN batch_results r ON r.result_id=c.result_id WHERE c.run_id=?""",
                 (run_id,),
-            ).fetchone()
-            verified_items = int(verified_items_row[0]) if verified_items_row else 0
-
-            route_rows = connection.execute(
-                """SELECT requested_route, provider, count(*) as attempts,
-                          sum(case when status='complete' then 1 else 0 end) as verified,
-                          sum(case when error like '%429%' or error like '%rate limit%' then 1 else 0 end) as rate_limits,
-                          avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
-                          sum(case when cost is not null then cost else 0 end) as total_cost
-                   FROM model_runs WHERE run_id=? GROUP BY requested_route, provider""",
-                (run_id,),
             ).fetchall()
+            verified_items = 0
+            for res in res_rows:
+                try:
+                    items = json.loads(res["result_json"])
+                    if isinstance(items, list):
+                        verified_items += len(items)
+                    elif isinstance(items, dict) and "items" in items:
+                        verified_items += len(items["items"])
+                except Exception:
+                    pass
+
+            has_inf = connection.execute(
+                "SELECT count(*) FROM inference_attempts WHERE run_id=?", (run_id,)
+            ).fetchone()[0]
+            if has_inf > 0:
+                route_rows = connection.execute(
+                    """SELECT route_id as requested_route, provider, count(*) as attempts,
+                              sum(case when outcome='verified' then 1 else 0 end) as verified,
+                              sum(case when transport_status='rate_limit' or error_type='rate_limit' then 1 else 0 end) as rate_limits,
+                              avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
+                              sum(case when cost is not null then cost else 0 end) as total_cost
+                       FROM inference_attempts WHERE run_id=? GROUP BY route_id, provider""",
+                    (run_id,),
+                ).fetchall()
+            else:
+                route_rows = connection.execute(
+                    """SELECT requested_route, provider, count(*) as attempts,
+                              sum(case when status='complete' then 1 else 0 end) as verified,
+                              sum(case when error like '%429%' or error like '%rate limit%' then 1 else 0 end) as rate_limits,
+                              avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
+                              sum(case when cost is not null then cost else 0 end) as total_cost
+                       FROM model_runs WHERE run_id=? GROUP BY requested_route, provider""",
+                    (run_id,),
+                ).fetchall()
 
             active_workers_row = connection.execute(
                 "SELECT count(distinct lease_owner) FROM batches WHERE run_id=? AND status='leased' AND lease_owner IS NOT NULL",

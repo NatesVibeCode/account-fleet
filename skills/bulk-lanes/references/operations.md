@@ -23,21 +23,48 @@ bulk-lanes test my-task --input my-task.sample.jsonl
 bulk-lanes run my-task --input my-task.sample.jsonl --run-id my-run
 ```
 
-`validate` is offline. `test` performs one real inference batch. `run` stores its exact task revision, input digest, typed batches, leases, attempts, sessions, and receipts in SQLite.
+For tabular data, pass CSV directly:
+```bash
+bulk-lanes run my-task --input data.csv --id-column id --text-column body --run-id my-run
+```
 
-## Inspect and resume
+`validate` is offline. `test` performs one real inference batch. `run` stores its exact task revision, input digest, typed batches, leases, attempts, sessions, receipts, and inference attempts in SQLite.
+
+## Real-time status and benchmark eval
+
+```bash
+# Monitor live run progress, batch states, and per-route reliability
+bulk-lanes status my-run --watch
+
+# Benchmark routes on a test sample to update intelligent ranking priors
+bulk-lanes eval my-task --input eval-sample.csv --id-column id --text-column body
+```
+
+## Inspect, resume, and export
 
 ```bash
 bulk-lanes tasks --json
 bulk-lanes routes --json
+bulk-lanes routes add openai_compatible:llama3.2:latest --provider openai_compatible --free
 bulk-lanes sessions my-run --json
+bulk-lanes status my-run --json
 bulk-lanes resume my-run --json
-bulk-lanes export my-run --output clean_packet.json --json
+bulk-lanes export my-run --format csv --output results.csv
 ```
 
 Resume needs only the run ID. SQLite already holds the batch payloads. Do not reconstruct a run from the original files.
 
 Packaged routes are disabled hints, not current price evidence. `routes --refresh` contacts providers and appends observations. Use it only when that mutation is in scope.
+
+## Data & Policy Flags
+
+Runs can be restricted by policy:
+- `--zdr`: Enforce zero data retention on provider models.
+- `--no-data-collection`: Disallow models that train on inputs.
+- `--provider <transport>`: Restrict candidate routes to specific transports (`openrouter`, `opencode`, `openai_compatible`).
+- `--exclude-provider <transport>`: Exclude specific transports.
+- `--openrouter-providers <names>`: Filter OpenRouter upstream routing (e.g. `Anthropic,Together`).
+- `--openrouter-order <names>`: Custom ordering for upstream OpenRouter providers.
 
 ## Database
 
@@ -47,7 +74,7 @@ The default is `./bulk-lanes.db`. Select a different database with `--db PATH` o
 bulk-lanes schema database
 ```
 
-The queue uses WAL, foreign keys, busy timeout, and atomic `BEGIN IMMEDIATE` leases. Attempt and model-run evidence is retained.
+The queue uses WAL, foreign keys, busy timeout, and atomic `BEGIN IMMEDIATE` leases. Attempt and model-run evidence is retained. Schema version is `"2"`.
 
 ## MCP
 
@@ -61,6 +88,20 @@ The queue uses WAL, foreign keys, busy timeout, and atomic `BEGIN IMMEDIATE` lea
   }
 }
 ```
+
+The MCP server exposes 12 structured tools:
+1. `bulk_lanes_routes`: List admitted routes, optionally refresh.
+2. `bulk_lanes_register_task`: Register an immutable task revision.
+3. `bulk_lanes_tasks`: List registered task definitions.
+4. `bulk_lanes_test`: Run one batch through candidate models (supports `id_column`, `text_column`).
+5. `bulk_lanes_validate`: Offline task and input validation.
+6. `bulk_lanes_run`: Launch bounded resumable campaign (supports `id_column`, `text_column`, `policy`).
+7. `bulk_lanes_resume`: Resume pending batches from existing run.
+8. `bulk_lanes_status`: Real-time batch progress and per-route reliability metrics.
+9. `bulk_lanes_eval`: Benchmark routes against sample inputs and update ranking priors.
+10. `bulk_lanes_export`: Export clean packet (`format="json"|"csv"`).
+11. `bulk_lanes_schema`: View JSON Schemas or SQLite database schema.
+12. `bulk_lanes_doctor`: Check workspace health and provider readiness.
 
 The MCP database defaults to `<workspace>/bulk-lanes.db`. Task, input, database, and packet paths outside the root are refused.
 

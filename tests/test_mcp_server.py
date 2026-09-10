@@ -60,6 +60,83 @@ def test_mcp_tool_error_does_not_kill_server(tmp_path):
     assert responses[1]["result"]["isError"] is True
     assert responses[2]["id"] == 3
     tools = responses[2]["result"]["tools"]
-    assert len(tools) == 10
+    assert len(tools) == 12
+    tool_names = {tool["name"] for tool in tools}
+    assert "bulk_lanes_status" in tool_names
+    assert "bulk_lanes_eval" in tool_names
     assert all(tool["description"] for tool in tools)
     assert all("inputSchema" in tool and "outputSchema" in tool for tool in tools)
+
+
+def test_mcp_tools_execution(tmp_path):
+    messages = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "pytest", "version": "1"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "bulk_lanes_doctor",
+                "arguments": {},
+            },
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "bulk_lanes_schema",
+                "arguments": {"kind": "database"},
+            },
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "bulk_lanes_routes",
+                "arguments": {"refresh": False, "observed_zero_only": False},
+            },
+        },
+    ]
+    process = subprocess.Popen(
+        [sys.executable, "-m", "bulk_lanes.cli", "serve", "--workspace-root", str(tmp_path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdin is not None
+    assert process.stdout is not None
+    responses = {}
+    for message in messages:
+        process.stdin.write(json.dumps(message) + "\n")
+        process.stdin.flush()
+        if "id" in message:
+            resp = json.loads(process.stdout.readline())
+            responses[resp["id"]] = resp
+    process.stdin.close()
+    exit_code = process.wait(timeout=10)
+
+    assert exit_code == 0
+    # doctor tool call
+    doctor_res = responses[2]["result"]
+    assert "isError" not in doctor_res or not doctor_res["isError"]
+
+    # schema tool call
+    schema_res = responses[3]["result"]
+    assert "isError" not in schema_res or not schema_res["isError"]
+
+    # routes tool call
+    routes_res = responses[4]["result"]
+    assert "isError" not in routes_res or not routes_res["isError"]

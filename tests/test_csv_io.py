@@ -95,7 +95,7 @@ def test_csv_export_projection(tmp_path):
         row = reader[0]
         assert row["item_id"] == "item-1"
         assert row["source_uri"] == "https://example.com/1"
-        assert row["claim_category"] == "cloud"
-        assert row["claim_sentiment"] == "positive"
+        assert row["category"] == "cloud"
+        assert row["sentiment"] == "positive"
         assert row["primary_quote_text"] == "great cloud provider"
         assert row["quote_count"] == "1"

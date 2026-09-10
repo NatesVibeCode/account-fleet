@@ -22,7 +22,10 @@ from .models import (
     InputItem,
     ID_PATTERN,
     ModelOutput,
+    RouteEvalReport,
+    RoutePolicy,
     RoutesResult,
+    RunStatusReport,
     SchemaResult,
     TaskSpec,
     TaskRegistrationResult,
@@ -94,11 +97,13 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
     @server.tool(structured_output=True)
     def bulk_lanes_test(
         task: Annotated[str, Field(description="Registered task name or workspace-relative TaskSpec JSON")],
-        input_path: Annotated[str, Field(description="Workspace-relative JSON or JSONL input")],
+        input_path: Annotated[str, Field(description="Workspace-relative JSON, JSONL, or CSV input")],
+        id_column: Annotated[str | None, Field(description="Optional CSV ID column")] = None,
+        text_column: Annotated[str | None, Field(description="Optional CSV text column")] = None,
     ) -> BatchTestResult:
         """Run one real inference batch and return only typed, source-grounded results."""
         task_spec = resolve_task(task)
-        items = load_input_items(workspace.path(input_path, exists=True))
+        items = load_input_items(workspace.path(input_path, exists=True), id_column=id_column, text_column=text_column)
         batches = pack_items(items[:task_spec.batch_size], task_spec.batch_size, task_spec.max_slice_chars)
         if not batches:
             raise ValueError("input contains no packable items")
@@ -113,35 +118,41 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
     @server.tool(structured_output=True)
     def bulk_lanes_validate(
         task: Annotated[str, Field(description="Registered task name or workspace-relative TaskSpec JSON")],
-        input_path: Annotated[str, Field(description="Workspace-relative JSON or JSONL input")],
+        input_path: Annotated[str, Field(description="Workspace-relative JSON, JSONL, or CSV input")],
+        id_column: Annotated[str | None, Field(description="Optional CSV ID column")] = None,
+        text_column: Annotated[str | None, Field(description="Optional CSV text column")] = None,
     ) -> ValidationReport:
         """Validate a task and all input records offline without invoking a model."""
         task_spec = resolve_task(task)
-        items = load_input_items(workspace.path(input_path, exists=True))
+        items = load_input_items(workspace.path(input_path, exists=True), id_column=id_column, text_column=text_column)
         batches = pack_items(items, task_spec.batch_size, task_spec.max_slice_chars)
         return ValidationReport(valid=True, task=task_spec.name, input_items=len(items), batches=len(batches))
 
     @server.tool(structured_output=True)
     def bulk_lanes_run(
         task: Annotated[str, Field(description="Registered task name or workspace-relative TaskSpec JSON")],
-        input_path: Annotated[str, Field(description="Workspace-relative JSON or JSONL input")],
+        input_path: Annotated[str, Field(description="Workspace-relative JSON, JSONL, or CSV input")],
         run_id: Annotated[str, Field(description="Stable run identifier", pattern=ID_PATTERN, max_length=128)],
         sessions: Annotated[int, Field(ge=1, le=64)] = 4,
         max_attempts: Annotated[int, Field(ge=1, le=100_000)] = 300,
         output_packet: Annotated[str | None, Field(description="Optional workspace-relative packet path")] = None,
+        id_column: Annotated[str | None, Field(description="Optional CSV ID column")] = None,
+        text_column: Annotated[str | None, Field(description="Optional CSV text column")] = None,
+        policy: Annotated[RoutePolicy | None, Field(description="Optional RoutePolicy with privacy, transport, or cost bounds")] = None,
     ) -> CleanPacket:
         """Create and execute a bounded, resumable SQLite-backed bulk campaign."""
         task_spec = resolve_task(task)
         input_file = workspace.path(input_path, exists=True)
-        items = load_input_items(input_file)
+        items = load_input_items(input_file, id_column=id_column, text_column=text_column)
         packet_path = workspace.path(output_packet) if output_packet else workspace.path(f"runs/{run_id}/clean_packet.json")
-        packet = Engine(task=task_spec, store=store).run_campaign(
+        packet = Engine(task=task_spec, store=store, policy=policy).run_campaign(
             raw_items=items,
             run_id=run_id,
             input_path=str(input_file),
             concurrency=sessions,
             max_attempts=max_attempts,
             output_packet_path=packet_path,
+            policy=policy,
         )
         return CleanPacket.model_validate(packet)
 
@@ -159,14 +170,39 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
         return CleanPacket.model_validate(packet)
 
     @server.tool(structured_output=True)
+    def bulk_lanes_status(
+        run_id: Annotated[str, Field(description="Existing SQLite run identifier")],
+    ) -> RunStatusReport:
+        """Show real-time progress, batch status counts, and per-route reliability metrics for a run."""
+        return store.get_run_status(run_id)
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_eval(
+        task: Annotated[str, Field(description="Registered task name or workspace-relative TaskSpec JSON")],
+        input_path: Annotated[str, Field(description="Evaluation dataset (CSV, JSONL, or JSON)")],
+        routes: Annotated[list[str] | None, Field(description="Optional list of route IDs to benchmark")] = None,
+        id_column: Annotated[str | None, Field(description="Optional CSV ID column")] = None,
+        text_column: Annotated[str | None, Field(description="Optional CSV text column")] = None,
+    ) -> RouteEvalReport:
+        """Benchmark candidate routes against test samples and update intelligent ranking priors."""
+        from .eval import RouteEvaluator
+        task_spec = resolve_task(task)
+        items = load_input_items(workspace.path(input_path, exists=True), id_column=id_column, text_column=text_column)
+        evaluator = RouteEvaluator(task=task_spec, store=store)
+        return evaluator.evaluate_routes(samples=items, candidate_routes=routes)
+
+    @server.tool(structured_output=True)
     def bulk_lanes_export(
         run_id: Annotated[str, Field(description="Existing SQLite run identifier")],
-        output_path: Annotated[str | None, Field(description="Optional workspace-relative packet path")] = None,
+        output_path: Annotated[str | None, Field(description="Optional workspace-relative export path")] = None,
+        export_format: Annotated[str, Field(description="Export format: json or csv")] = "json",
     ) -> CleanPacket:
-        """Export verified records and receipts as a self-validating typed packet."""
+        """Export verified records as a self-validating typed packet (JSON) or flat CSV."""
         snapshot = store.run_snapshot(run_id)
-        destination = workspace.path(output_path) if output_path else workspace.path(snapshot["output_path"])
-        return CleanPacket.model_validate(export_clean_packet(snapshot, destination))
+        default_ext = "csv" if export_format == "csv" else "json"
+        destination = workspace.path(output_path) if output_path else workspace.path(f"runs/{run_id}/clean_packet.{default_ext}")
+        packet = export_clean_packet(snapshot, destination, export_format=export_format)
+        return CleanPacket.model_validate(packet)
 
     @server.tool(structured_output=True)
     def bulk_lanes_schema(
@@ -180,8 +216,9 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
             "output": ModelOutput,
             "packet": CleanPacket,
         }
+        from .store import get_database_schema_sql
         document = (
-            {"schema_version": SCHEMA_VERSION, "sql": SCHEMA_SQL}
+            {"schema_version": SCHEMA_VERSION, "sql": get_database_schema_sql()}
             if kind == "database"
             else models[kind].model_json_schema(by_alias=True)
         )
@@ -195,7 +232,7 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
         opencode = shutil.which("opencode")
         openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
         checks = [
-            DoctorCheck(name="database", ok=store.schema_version() == "1", detail=f"SQLite schema {store.schema_version()}"),
+            DoctorCheck(name="database", ok=store.schema_version() in ("1", "2"), detail=f"SQLite schema {store.schema_version()}"),
             DoctorCheck(name="opencode", ok=bool(opencode), detail=opencode or "opencode not found in PATH"),
             DoctorCheck(name="openrouter", ok=openrouter, detail="configured" if openrouter else "optional key not configured"),
             DoctorCheck(name="routes", ok=bool(routes), detail=f"{len(routes)} enabled observed-zero routes"),

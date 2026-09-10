@@ -1,8 +1,9 @@
-"""OpenRouter API provider for free and low-cost model lanes with session tracking."""
+from __future__ import annotations
+
 import os
 import time
 import uuid
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 import httpx
 from .base import BaseProvider
 
@@ -73,10 +74,19 @@ class OpenRouterProvider(BaseProvider):
                 provider_cfg["data_collection"] = "deny"
             if getattr(policy, "zdr", False):
                 provider_cfg["zdr"] = True
-            if getattr(policy, "allowed_providers", None):
-                provider_cfg["order"] = policy.allowed_providers
-            if getattr(policy, "excluded_providers", None):
-                provider_cfg["ignore"] = policy.excluded_providers
+            if getattr(policy, "openrouter_order", None):
+                provider_cfg["order"] = policy.openrouter_order
+            elif getattr(policy, "openrouter_providers", None):
+                provider_cfg["order"] = policy.openrouter_providers
+            elif getattr(policy, "allowed_providers", None):
+                transports = {"openrouter", "opencode", "openai_compatible", "ollama", "lmstudio", "vllm", "groq", "cerebras"}
+                upstream = [p for p in policy.allowed_providers if p.lower() not in transports]
+                if upstream:
+                    provider_cfg["order"] = upstream
+            if getattr(policy, "openrouter_ignore", None):
+                provider_cfg["ignore"] = policy.openrouter_ignore
+            if hasattr(policy, "openrouter_allow_fallbacks") and not policy.openrouter_allow_fallbacks:
+                provider_cfg["allow_fallbacks"] = False
         if provider_cfg:
             payload["provider"] = provider_cfg
 

@@ -229,14 +229,32 @@ class TaskSpec(ClosedModel):
 
 
 class RoutePolicy(ClosedModel):
-    allowed_providers: list[str] | None = Field(default=None, description="Optional allowlist of provider names")
-    excluded_providers: list[str] = Field(default_factory=list, description="Blocklist of provider names")
+    allowed_transports: list[str] | None = Field(default=None, description="Optional allowlist of bulk-lanes transport names")
+    excluded_transports: list[str] = Field(default_factory=list, description="Blocklist of bulk-lanes transport names")
+    allowed_providers: list[str] | None = Field(default=None, description="Deprecated alias for allowed_transports")
+    excluded_providers: list[str] = Field(default_factory=list, description="Deprecated alias for excluded_transports")
     allowed_routes: list[str] | None = Field(default=None, description="Optional allowlist of route IDs")
     excluded_routes: list[str] = Field(default_factory=list, description="Blocklist of route IDs")
     zdr: bool = Field(default=False, description="Enforce Zero Data Retention on upstream providers")
     allow_data_collection: bool = Field(default=True, description="Whether providers may collect request data")
     max_cost_per_1k_input: float = Field(default=0.0, ge=0, description="Max allowed cost per 1k input tokens")
     max_cost_per_1k_output: float = Field(default=0.0, ge=0, description="Max allowed cost per 1k output tokens")
+    openrouter_providers: list[str] | None = Field(default=None, description="Upstream OpenRouter providers to prioritize")
+    openrouter_ignore: list[str] = Field(default_factory=list, description="Upstream OpenRouter providers to ignore")
+    openrouter_order: list[str] | None = Field(default=None, description="Upstream OpenRouter provider ordering")
+    openrouter_allow_fallbacks: bool = Field(default=True, description="Whether OpenRouter may fall back to other providers")
+
+    @model_validator(mode="after")
+    def sync_transports_and_providers(self) -> "RoutePolicy":
+        if self.allowed_providers and not self.allowed_transports:
+            self.allowed_transports = list(self.allowed_providers)
+        elif self.allowed_transports and not self.allowed_providers:
+            self.allowed_providers = list(self.allowed_transports)
+        if self.excluded_providers and not self.excluded_transports:
+            self.excluded_transports = list(self.excluded_providers)
+        elif self.excluded_transports and not self.excluded_providers:
+            self.excluded_providers = list(self.excluded_transports)
+        return self
 
 
 class ProviderReceipt(ClosedModel):

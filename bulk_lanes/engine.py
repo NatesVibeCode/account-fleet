@@ -1,6 +1,7 @@
-"""Core execution engine coordinating SQLite-leased model workers."""
 import concurrent.futures
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from pydantic import ValidationError
@@ -53,6 +54,7 @@ class Engine:
         session: Optional[WorkerSession] = None,
         route_offset: int = 0,
         route_attempt_limit: int | None = None,
+        run_id: Optional[str] = None,
     ) -> Tuple[bool, Optional[List[dict]], dict, Optional[str]]:
         """Executes a single multi-item batch within a worker session."""
         batch = PackedBatch.model_validate(batch).model_dump(mode="json")
@@ -80,25 +82,31 @@ class Engine:
         user_content = self.task.render_prompt(simplified_items)
 
         # Get route ladder with intelligent ranking and active policy filtering
-        ladder = self.catalog.get_ladder(
-            task_seed=batch_id,
+        available_routes = self.catalog.get_ladder(
+            task_seed=str(items[0]["item_id"]) if items else "",
             free_only=True,
             task_name=self.task.name,
             policy=self.policy,
         )
-        if session and session.route_id in ladder:
-            ladder = [session.route_id] + [r for r in ladder if r != session.route_id]
+        if session and session.route_id in available_routes and not self.catalog.is_cooled_down(session.route_id):
+            ladder = [session.route_id] + [r for r in available_routes if r != session.route_id]
+        else:
+            ladder = list(available_routes)
 
         if ladder and route_offset:
             start = route_offset % len(ladder)
             ladder = ladder[start:] + ladder[:start]
 
         if not ladder:
+            earliest_retry = self.catalog.get_earliest_cooldown_retry()
+            if earliest_retry > 0:
+                return False, None, {}, f"All matching routes are in active cooldown (earliest retry in {earliest_retry:.1f}s)."
             return False, None, {}, "No enabled route has observed zero pricing or matches active policy."
 
         last_err = "No attempts made"
         last_receipt = {}
         routes_by_id = {r["id"]: r for r in self.catalog.data.get("routes", [])}
+        batch_id = batch.get("batch_id", "b0")
 
         attempt_limit = route_attempt_limit or self.max_attempts_per_batch
         for route_id in ladder[:attempt_limit]:
@@ -112,6 +120,7 @@ class Engine:
             if "policy" in sig.parameters:
                 prompt_kwargs["policy"] = self.policy
 
+            started_ts = time.time()
             ok, response_text, receipt = provider.run_prompt(
                 route_id=route_id,
                 prompt=user_content,
@@ -120,10 +129,43 @@ class Engine:
             )
             last_receipt = receipt
 
+            attempt_record = {
+                "attempt_id": f"{run_id or 'adhoc'}:{batch_id}:{route_id}:{uuid.uuid4().hex[:8]}",
+                "run_id": run_id,
+                "batch_id": batch_id,
+                "lease_attempt_number": (route_offset + 1) if route_offset is not None else 1,
+                "route_id": route_id,
+                "provider": receipt.get("provider") or provider_hint or "unknown",
+                "task_name": self.task.name,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "duration_seconds": receipt.get("duration_seconds") or (time.time() - started_ts),
+                "cost": receipt.get("cost"),
+                "cost_status": receipt.get("cost_status"),
+                "usage": receipt.get("usage"),
+                "retry_after": receipt.get("retry_after"),
+                "error_type": receipt.get("error_type"),
+                "error_message": receipt.get("error"),
+                "transport_status": "success",
+                "parse_status": "skipped",
+                "schema_status": "skipped",
+                "grounding_status": "skipped",
+                "outcome": "failed",
+                "verified": False,
+                "counts_against_budget": 1,
+            }
+
             try:
                 ProviderReceipt.model_validate(receipt)
             except ValidationError as exc:
                 last_err = f"Invalid provider receipt from '{route_id}': {exc}"
+                attempt_record.update({
+                    "transport_status": "failed",
+                    "outcome": "transport_failed",
+                    "error_type": "invalid_receipt",
+                    "error_message": last_err,
+                })
+                if self.store:
+                    self.store.record_inference_attempt(attempt_record)
                 if session:
                     session.record_error(last_err)
                 continue
@@ -134,12 +176,25 @@ class Engine:
                 retry_after = receipt.get("retry_after") or 10.0
 
                 if error_type in ("rate_limit", "transient_http"):
-                    # Temporarily cool down route without burning batch attempt
+                    # Temporarily cool down route without burning batch attempt budget
                     self.catalog.set_cooldown(route_id, retry_after, reason=f"{error_type}: {last_err}")
+                    attempt_record.update({
+                        "transport_status": error_type,
+                        "outcome": "rate_limited" if error_type == "rate_limit" else "transport_failed",
+                        "counts_against_budget": 0,
+                    })
+                    if self.store:
+                        self.store.record_inference_attempt(attempt_record)
                     if session:
                         session.record_error(f"[{route_id}] Cooldown {retry_after}s applied: {last_err}")
                     continue
 
+                attempt_record.update({
+                    "transport_status": "failed",
+                    "outcome": "transport_failed",
+                })
+                if self.store:
+                    self.store.record_inference_attempt(attempt_record)
                 if session:
                     session.record_error(f"[{route_id}] {last_err}")
                 continue
@@ -148,12 +203,27 @@ class Engine:
             try:
                 self.catalog.record_cost(route_id, receipt.get("cost"))
             except Exception as e:
+                attempt_record.update({
+                    "transport_status": "circuit_breaker",
+                    "outcome": "transport_failed",
+                    "error_message": str(e),
+                })
+                if self.store:
+                    self.store.record_inference_attempt(attempt_record)
                 return False, None, receipt, str(e)
 
             # Parse JSON
             parsed = clean_llm_json(response_text)
             if not parsed or not isinstance(parsed, dict):
                 last_err = f"Malformed JSON from route '{route_id}'"
+                attempt_record.update({
+                    "transport_status": "success",
+                    "parse_status": "malformed_json",
+                    "outcome": "parse_failed",
+                    "error_message": last_err,
+                })
+                if self.store:
+                    self.store.record_inference_attempt(attempt_record)
                 if session:
                     session.record_error(last_err)
                 continue
@@ -164,6 +234,15 @@ class Engine:
                     self.task.validate_claims(extracted_item.claims)
             except (ValidationError, ValueError) as exc:
                 last_err = f"Typed output validation failed for '{route_id}': {exc}"
+                attempt_record.update({
+                    "transport_status": "success",
+                    "parse_status": "success",
+                    "schema_status": "schema_violation",
+                    "outcome": "schema_failed",
+                    "error_message": last_err,
+                })
+                if self.store:
+                    self.store.record_inference_attempt(attempt_record)
                 if session:
                     session.record_error(last_err)
                 continue
@@ -171,14 +250,36 @@ class Engine:
             output_items, ground_err = normalize_grounding(
                 extracted_items=candidate_output.items,
                 raw_cards=items,
-                min_quote_chars=self.task.min_quote_chars
+                min_quote_chars=self.task.min_quote_chars,
             )
 
             if output_items is None:
                 last_err = f"Grounding verification failed: {ground_err}"
+                attempt_record.update({
+                    "transport_status": "success",
+                    "parse_status": "success",
+                    "schema_status": "success",
+                    "grounding_status": "grounding_failed",
+                    "outcome": "grounding_failed",
+                    "error_message": last_err,
+                })
+                if self.store:
+                    self.store.record_inference_attempt(attempt_record)
                 if session:
                     session.record_error(last_err)
                 continue
+
+            # Fully verified inference attempt!
+            attempt_record.update({
+                "transport_status": "success",
+                "parse_status": "success",
+                "schema_status": "success",
+                "grounding_status": "success",
+                "outcome": "verified",
+                "verified": True,
+            })
+            if self.store:
+                self.store.record_inference_attempt(attempt_record)
 
             # Record session success
             if session:
@@ -258,6 +359,7 @@ class Engine:
                     session=session,
                     route_offset=lease["attempt_number"] - 1,
                     route_attempt_limit=self.max_attempts_per_batch,
+                    run_id=run_id,
                 )
                 try:
                     receipt = ProviderReceipt.model_validate(raw_receipt) if raw_receipt else None
@@ -265,15 +367,17 @@ class Engine:
                     receipt = None
                 if ok and results is not None and receipt is not None:
                     self.store.complete_batch(run_id, lease["attempt_id"], session.session_id, results, receipt)
-                elif receipt and receipt.error_type in ("rate_limit", "transient_http"):
+                elif (receipt and receipt.error_type in ("rate_limit", "transient_http")) or "active cooldown" in (error or "").lower():
                     # Release lease back to pending without consuming attempt
+                    earliest_retry = self.catalog.get_earliest_cooldown_retry()
+                    sleep_time = min(5.0, max(0.5, earliest_retry)) if earliest_retry > 0 else 1.0
                     self.store.release_lease(
                         run_id,
                         lease["attempt_id"],
                         session.session_id,
-                        reason=error or "Rate limit / transient error",
+                        reason=error or "Rate limit / transient error / route cooldown",
                     )
-                    time.sleep(1.0)
+                    time.sleep(sleep_time)
                 else:
                     self.store.fail_batch(
                         run_id,

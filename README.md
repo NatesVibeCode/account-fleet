@@ -6,7 +6,7 @@
 
 High-throughput, evidence-grounded AI bulk processing across free, paid, and local models.
 
-Run structured classification, entity extraction, summarization, and triage across thousands of records with SQLite checkpointing, character-exact quote grounding, and strict zero-hallucination verification.
+Run structured classification, entity extraction, summarization, and triage across thousands of records with SQLite checkpointing, character-exact quote grounding, and deterministic verification against source text.
 
 ---
 
@@ -24,7 +24,7 @@ fb_3,"Customer support never answered my email about the missing invoice."
 ### 1. Initialize a task and run
 
 ```bash
-# Initialize a typed triage task preset
+# Initialize a typed triage task preset (priority, reason, grounded quotes)
 bulk-lanes init customer-triage --preset triage
 
 # Process the CSV using intelligent model routing
@@ -40,22 +40,22 @@ bulk-lanes export triage-01 --format csv --output results.csv
 ### 3. Output (`results.csv`)
 
 ```csv
-item_id,urgency,category,summary,quote_text
-fb_1,critical,bug,"Checkout button failure","checkout button gave a 500 error"
-fb_2,low,praise,"Praise for recyclable packaging","packaging was completely recyclable"
-fb_3,medium,support,"Unanswered invoice support email","never answered my email about the missing invoice"
+item_id,priority,reason,primary_quote_text,quote_count,source_uri,source_digest
+fb_1,high,"Checkout button failure blocks user purchase","checkout button gave a 500 error",1,"",a8f110...
+fb_2,low,"Positive customer feedback on eco packaging","packaging was completely recyclable",1,"",4c2b81...
+fb_3,medium,"Support request regarding invoice remains unanswered","never answered my email about the missing invoice",1,"",9e11fd...
 ```
 
-Every claim is paired with verbatim quotes directly extracted from the source text and verified down to the character offset.
+Every claim is paired with verbatim quotes directly verified against the source text at character-exact offsets.
 
 ---
 
 ## Why You Can Trust the Output
 
-1. **Character-Exact Grounding**: Models cannot invent facts. Every claim must cite an exact substring from the source record. `bulk-lanes` checks every quote against the source text and calculates canonical `[start, end]` character offsets. Hallucinated quotes fail validation and trigger automatic retries.
+1. **Character-Exact Quote Grounding**: Every claim must be anchored to verifiable evidence. Extracted quotes are deterministically verified against the source text at character-level precision and resolved to canonical `[start, end]` character offsets. Unsupported claims or hallucinated quotes fail validation and trigger automatic route rotation.
 2. **Closed JSON Schemas**: Outputs adhere strictly to closed JSON Schemas defined in the `TaskSpec`. Models cannot add unexpected fields, produce unformatted markdown, or drift out of schema.
 3. **Intelligent Route Scoring**: Instead of blind round-robin rotation, `bulk-lanes` uses Bayesian-smoothed historical scoring based on verification rates, malformed JSON rates, grounding accuracy, and latency. Models that consistently produce verified results are prioritized.
-4. **Non-Destructive Rate-Limit Handling**: When an API returns a `429 Too Many Requests` or `5xx Server Error`, `bulk-lanes` automatically cools down that route and retries the batch immediately on an alternative route without burning the batch attempt limit.
+4. **Non-Destructive Rate-Limit Handling**: When an API returns a `429 Too Many Requests` or `5xx Server Error`, `bulk-lanes` puts the route in cooldown and retries the batch immediately on an alternative route without burning the batch attempt limit.
 5. **Zero-Price Circuit Breaker**: Route pricing is observed directly from provider receipts. If a route begins charging or exceeds pricing thresholds without explicit authorization, the run trips the circuit breaker immediately.
 
 ---
@@ -163,15 +163,22 @@ Evaluation benchmarks automatically update route selection priors for subsequent
 Run bulk workloads completely locally with **Ollama**, **LM Studio**, **vLLM**, or fast cloud inference providers like **Groq** and **Cerebras**:
 
 ```bash
+# Register your local or custom route in the catalog
+bulk-lanes routes add openai_compatible:llama3.2:latest --provider openai_compatible --free
+
+# Or configure environment variables
 export OPENAI_COMPATIBLE_BASE_URL="http://localhost:11434/v1"
 export OPENAI_COMPATIBLE_API_KEY="ollama"
 export OPENAI_COMPATIBLE_MODEL="llama3.2:latest"
 
+# Run with local provider selection
 bulk-lanes run my-task --input data.csv --id-column id --text-column text --provider openai_compatible
 ```
 
+Endpoints on `localhost` or `127.0.0.1` are automatically marked free (`cost = 0.0`). For third-party cloud OpenAI-compatible endpoints, specify costs explicitly (`--input-cost` / `--output-cost`) or leave them as unknown-cost to prevent accidental misclassification.
+
 ### 5. Explicit Data & Privacy Policy
-Enforce zero data retention (ZDR), prohibit provider data collection, and filter providers on a per-run basis:
+Enforce zero data retention (ZDR), prohibit provider data collection, and control upstream routing on a per-run basis:
 
 ```bash
 bulk-lanes run my-task \
@@ -179,7 +186,8 @@ bulk-lanes run my-task \
   --zdr \
   --no-data-collection \
   --provider openrouter \
-  --exclude-provider opencode
+  --exclude-provider opencode \
+  --openrouter-providers Anthropic,Together
 ```
 
 ---
@@ -195,7 +203,7 @@ bulk-lanes resume <run_id>
 - **Resumable**: Batches are committed upon verification. Completed work is never repeated.
 - **Fault-Tolerant**: Stale worker leases are automatically recovered after timeout.
 - **Concurrent**: Multiple worker processes can safely lease batches simultaneously without collisions.
-- **Auditable**: Every attempt, model receipt, cost observation, and verification failure is recorded immutably.
+- **Auditable**: Every attempt, model receipt, cost observation, and verification failure is recorded immutably in `inference_attempts`.
 
 ---
 
@@ -206,6 +214,7 @@ bulk-lanes resume <run_id>
 | `setup` | Bootstrap a portable workspace with bundled skills and SQLite database |
 | `doctor` | Check SQLite, installed CLIs, provider authentication, and available routes |
 | `routes` | List or refresh discovered model routes (`--refresh`) |
+| `routes add` | Register an explicit custom or local model route (`--free`, `--input-cost`) |
 | `tasks` | List registered task definitions |
 | `init` | Create a typed task from a preset (`classify`, `extract`, `triage`, `summarize`) |
 | `validate` | Check task schema and input formatting without inference |

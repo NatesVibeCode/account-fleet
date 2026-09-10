@@ -1,11 +1,12 @@
-"""OpenCode provider using the normally installed CLI."""
+from __future__ import annotations
+
 import json
 import subprocess
 import tempfile
 import time
 import uuid
 from pathlib import Path
-from typing import Optional, Protocol, Tuple
+from typing import Any, Optional, Protocol, Tuple
 
 from .base import BaseProvider
 

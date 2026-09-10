@@ -110,3 +110,91 @@ def test_campaign_state_and_receipts_live_in_sqlite(tmp_path):
     calls = engine.opencode_prov.calls
     engine.resume_campaign("run-1", concurrency=2, output_packet_path=output)
     assert engine.opencode_prov.calls == calls
+
+
+def test_inference_attempts_recorded_in_sqlite_on_failure_and_success(tmp_path):
+    class MultiRouteStub:
+        def __init__(self):
+            self.calls = []
+
+        def run_prompt(self, route_id, prompt, system_prompt=None, timeout_sec=120, session_id=None, policy=None):
+            self.calls.append(route_id)
+            receipt = {
+                "id": f"rec-{len(self.calls)}",
+                "session_id": session_id,
+                "provider": "stub",
+                "requested_route": route_id,
+                "status": "complete",
+                "cost": 0.0,
+                "cost_status": "reported_zero",
+                "usage": {"total_tokens": 10},
+                "error": None,
+                "duration_seconds": 0.05,
+            }
+            if len(self.calls) == 1:
+                # Returns malformed JSON on first attempt
+                return True, "not valid json here", receipt
+            else:
+                # Returns valid verified result on second attempt
+                valid_payload = {
+                    "items": [{
+                        "item_id": "i1",
+                        "claims": {"summary": "supported"},
+                        "quotes": [{"slice_id": "full", "text": "supported source text"}],
+                    }]
+                }
+                return True, json.dumps(valid_payload), receipt
+
+    catalog = RouteCatalog(db_path=tmp_path / "state.db")
+    catalog.add_route("stub/fail", provider="stub", cost_per_1k_input=0.0, cost_per_1k_output=0.0, price_state="price_observed_zero")
+    catalog.add_route("stub/pass", provider="stub", cost_per_1k_input=0.0, cost_per_1k_output=0.0, price_state="price_observed_zero")
+
+    task = TaskSpec(
+        name="multi-test",
+        claims_schema={
+            "type": "object",
+            "properties": {"summary": {"type": "string"}},
+            "required": ["summary"],
+            "additionalProperties": False,
+        },
+    )
+    engine = Engine(task, catalog=catalog)
+    stub_provider = MultiRouteStub()
+    engine.registry.register("stub", stub_provider)
+
+    batch = pack_items([{"item_id": "i1", "text": "supported source text"}])[0]
+    ok, results, receipt, error = engine.execute_batch(batch, run_id="run-telemetry")
+
+    assert ok is True
+    assert len(results) == 1
+
+    # Verify inference_attempts ledger in store
+    with engine.store.connect() as conn:
+        attempts = conn.execute(
+            "SELECT route_id, transport_status, parse_status, outcome, verified FROM inference_attempts WHERE run_id='run-telemetry' ORDER BY started_at ASC"
+        ).fetchall()
+
+    assert len(attempts) == 2
+    first_route = stub_provider.calls[0]
+    second_route = stub_provider.calls[1]
+
+    assert attempts[0]["route_id"] == first_route
+    assert attempts[0]["parse_status"] == "malformed_json"
+    assert attempts[0]["outcome"] == "parse_failed"
+    assert attempts[0]["verified"] == 0
+
+    assert attempts[1]["route_id"] == second_route
+    assert attempts[1]["parse_status"] == "success"
+    assert attempts[1]["outcome"] == "verified"
+    assert attempts[1]["verified"] == 1
+
+    # Verify route history stats reflects the attempts
+    stats = engine.store.get_route_history_stats(task_name="multi-test")
+    assert first_route in stats
+    assert stats[first_route]["total"] == 1
+    assert stats[first_route]["completed"] == 0
+    assert stats[first_route]["malformed"] == 1
+
+    assert second_route in stats
+    assert stats[second_route]["total"] == 1
+    assert stats[second_route]["completed"] == 1
