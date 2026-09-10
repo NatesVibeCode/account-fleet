@@ -1,4 +1,7 @@
-"""User-friendly Command Line Interface for bulk-lanes with multi-session orchestration."""
+"""Universal Command Line Interface for bulk-lanes.
+Supports interactive human TUI, pure machine-readable JSON mode (--json),
+and standard MCP server mode (bulk-lanes serve) for any agent harness.
+"""
 import argparse
 import json
 import sys
@@ -14,19 +17,36 @@ from .manifest import ManifestManager
 from .task import Task, load_task
 
 def cmd_routes(args):
-    ui.banner()
     cat = RouteCatalog()
+    refresh_stats = {}
     if getattr(args, "refresh", False):
-        ui.info("Scanning provider catalogues (OpenCode + OpenRouter) for free models in schema...")
-        res = cat.refresh_all()
-        for prov, val in res.items():
-            if prov.endswith("_error"):
-                ui.warn(f"Provider {prov.replace('_error', '')} notice: {val}")
-            else:
-                ui.success(f"Provider '{prov}': {val} free models discovered from schema.")
+        if not args.json:
+            ui.banner()
+            ui.info("Scanning provider catalogues (OpenCode + OpenRouter) for free models in schema...")
+        refresh_stats = cat.refresh_all()
+        if not args.json:
+            for prov, val in refresh_stats.items():
+                if prov.endswith("_error"):
+                    ui.warn(f"Provider {prov.replace('_error', '')} notice: {val}")
+                else:
+                    ui.success(f"Provider '{prov}': {val} free models discovered from schema.")
 
     free_only = not args.all
     routes = cat.get_routes(free_only=free_only)
+
+    if args.json:
+        out = {
+            "status": "ok",
+            "free_only": free_only,
+            "total_routes": len(routes),
+            "refresh": refresh_stats if args.refresh else None,
+            "routes": routes
+        }
+        print(json.dumps(out, indent=2))
+        return
+
+    if not getattr(args, "refresh", False):
+        ui.banner()
     if not routes:
         ui.warn("No routes found matching filter.")
         return
@@ -34,15 +54,23 @@ def cmd_routes(args):
     ui.print_routes_table(routes)
 
 def cmd_sessions(args):
-    ui.banner()
     run_dir = Path(args.run_dir)
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.exists():
-        ui.error(f"No run manifest found in {run_dir}")
+        if args.json:
+            print(json.dumps({"error": f"Manifest not found in {run_dir}"}))
+        else:
+            ui.error(f"No run manifest found in {run_dir}")
         return
 
     data = json.loads(manifest_path.read_text())
     sessions = data.get("sessions", {})
+    
+    if args.json:
+        print(json.dumps({"run_id": data.get("run_id"), "sessions": sessions}, indent=2))
+        return
+
+    ui.banner()
     if not sessions:
         ui.info(f"No active or recorded worker sessions found in run '{data.get('run_id')}'.")
         return
@@ -51,7 +79,6 @@ def cmd_sessions(args):
     ui.print_sessions_table(sessions)
 
 def cmd_init(args):
-    ui.banner()
     task_name = args.name or "my_task"
     task_dir = Path(task_name)
     task_dir.mkdir(parents=True, exist_ok=True)
@@ -102,6 +129,11 @@ Items to triage:
         for r in sample_records:
             f.write(json.dumps(r) + "\n")
 
+    if args.json:
+        print(json.dumps({"status": "created", "task_file": str(task_file), "sample_data": str(data_file)}, indent=2))
+        return
+
+    ui.banner()
     ui.success(f"Initialized new task in '{task_dir}/'")
     print(f"\nRun a dry-run test:\n  bulk-lanes test --task {task_file} --input {data_file}\n")
     print(f"Run a bulk execution:\n  bulk-lanes run --task {task_file} --input {data_file}\n")
@@ -109,8 +141,7 @@ Items to triage:
 def _load_input_data(input_path_str: str) -> List[dict]:
     p = Path(input_path_str)
     if not p.exists():
-        ui.error(f"Input file not found: {input_path_str}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Input file not found: {input_path_str}")
     
     items = []
     if p.suffix == ".jsonl":
@@ -128,31 +159,58 @@ def _load_input_data(input_path_str: str) -> List[dict]:
         elif isinstance(data, dict) and "items" in data:
             items = data["items"]
     else:
-        ui.error(f"Unsupported file format '{p.suffix}'. Use .json or .jsonl")
-        sys.exit(1)
+        raise ValueError(f"Unsupported file format '{p.suffix}'. Use .json or .jsonl")
     return items
 
 def cmd_test(args):
-    ui.banner()
     task = load_task(args.task)
-    items = _load_input_data(args.input)
+    try:
+        items = _load_input_data(args.input)
+    except Exception as e:
+        if args.json:
+            print(json.dumps({"ok": False, "error": str(e)}))
+            sys.exit(1)
+        ui.error(str(e))
+        sys.exit(1)
+
     if not items:
+        if args.json:
+            print(json.dumps({"ok": False, "error": "No items found in input file."}))
+            sys.exit(1)
         ui.error("No items found in input file.")
         return
     
     test_items = items[:task.batch_size]
-    ui.info(f"Dry-run test: executing 1 batch of {len(test_items)} item(s) using task '{task.name}'...")
+    if not args.json:
+        ui.banner()
+        ui.info(f"Dry-run test: executing 1 batch of {len(test_items)} item(s) using task '{task.name}'...")
 
     engine = Engine(task=task)
     from .packer import pack_items
     batches = pack_items(test_items, batch_size=task.batch_size, max_slice_chars=task.max_slice_chars)
     if not batches:
+        if args.json:
+            print(json.dumps({"ok": False, "error": "Could not pack items into batch."}))
+            sys.exit(1)
         ui.error("Could not pack items into batch.")
         return
 
     b = batches[0]
-    ui.info(f"Dispatching test batch '{b['batch_id']}' across available free model ladder...")
+    if not args.json:
+        ui.info(f"Dispatching test batch '{b['batch_id']}' across available free model ladder...")
     ok, results, receipt, err = engine.execute_batch(b)
+
+    if args.json:
+        res_payload = {
+            "ok": ok,
+            "route_used": receipt.get("requested_route") if receipt else None,
+            "cost": receipt.get("cost") if receipt else None,
+            "duration_seconds": receipt.get("duration_seconds") if receipt else None,
+            "results": results,
+            "error": err
+        }
+        print(json.dumps(res_payload, indent=2))
+        sys.exit(0 if ok else 1)
 
     print("\n" + "=" * 80)
     if ok:
@@ -169,23 +227,35 @@ def cmd_test(args):
     print("=" * 80 + "\n")
 
 def cmd_run(args):
-    ui.banner()
     task = load_task(args.task)
-    items = _load_input_data(args.input)
+    try:
+        items = _load_input_data(args.input)
+    except Exception as e:
+        if args.json:
+            print(json.dumps({"status": "error", "error": str(e)}))
+            sys.exit(1)
+        ui.error(str(e))
+        sys.exit(1)
+
     if not items:
+        if args.json:
+            print(json.dumps({"status": "error", "error": "No input items to process."}))
+            sys.exit(1)
         ui.error("No input items to process.")
         return
 
     concurrency = args.sessions or args.concurrency or 4
     run_id = args.run_id or f"run_{task.name}_{int(time.time())}"
     run_dir = Path(args.output_dir or f"runs/{run_id}")
-    
-    ui.info(f"Starting bulk campaign '{run_id}'")
-    ui.info(f"Items: {len(items)} | Parallel Worker Sessions: {concurrency}")
+    out_packet = Path(args.output) if args.output else (run_dir / "clean_packet.json")
+
+    if not args.json:
+        ui.banner()
+        ui.info(f"Starting bulk campaign '{run_id}'")
+        ui.info(f"Items: {len(items)} | Parallel Worker Sessions: {concurrency}")
 
     engine = Engine(task=task)
-    out_packet = Path(args.output) if args.output else None
-    engine.run_campaign(
+    packet = engine.run_campaign(
         raw_items=items,
         run_dir=run_dir,
         concurrency=concurrency,
@@ -193,60 +263,88 @@ def cmd_run(args):
         output_packet_path=out_packet
     )
 
+    if args.json:
+        print(json.dumps(packet, indent=2))
+
 def cmd_resume(args):
-    ui.banner()
     run_dir = Path(args.run_dir)
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.exists():
+        if args.json:
+            print(json.dumps({"status": "error", "error": f"No manifest found in {run_dir}"}))
+            sys.exit(1)
         ui.error(f"No manifest found in {run_dir}")
         return
     
     manifest_data = json.loads(manifest_path.read_text())
-    ui.info(f"Resuming run '{manifest_data.get('run_id')}' from {run_dir}")
+    if not args.json:
+        ui.banner()
+        ui.info(f"Resuming run '{manifest_data.get('run_id')}' from {run_dir}")
     
     if not args.input or not args.task:
-        ui.error("Resuming requires specifying --task and --input to reconstruct pending items.")
+        err = "Resuming requires specifying --task and --input to reconstruct pending items."
+        if args.json:
+            print(json.dumps({"status": "error", "error": err}))
+            sys.exit(1)
+        ui.error(err)
         return
         
     cmd_run(args)
 
 def cmd_export(args):
-    ui.banner()
     run_dir = Path(args.run_dir)
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.exists():
+        if args.json:
+            print(json.dumps({"status": "error", "error": f"No manifest found in {run_dir}"}))
+            sys.exit(1)
         ui.error(f"No manifest found in {run_dir}")
         return
     manifest_data = json.loads(manifest_path.read_text())
     out_path = Path(args.output or (run_dir / "clean_packet.json"))
     packet = export_clean_packet(manifest_data, out_path)
+    
+    if args.json:
+        print(json.dumps(packet, indent=2))
+        return
+
+    ui.banner()
     ui.success(f"Exported clean packet to: {out_path}")
     ui.info(f"Total records: {packet['total_verified_records']}")
+
+def cmd_serve(args):
+    from .mcp_server import run_mcp_server
+    run_mcp_server()
 
 def main():
     parser = argparse.ArgumentParser(
         prog="bulk-lanes",
-        description="Air-Gapped Bulk Model Lane Orchestrator (OpenCode + OpenRouter)"
+        description="Air-Gapped Bulk Model Lane Orchestrator for any harness (OpenCode + OpenRouter)"
     )
+    parser.add_argument("--json", action="store_true", help="Machine-readable JSON output for agent harnesses")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # routes
     p_routes = subparsers.add_parser("routes", help="List available model lanes")
     p_routes.add_argument("--all", action="store_true", help="Show all routes including billable and disabled")
     p_routes.add_argument("--refresh", action="store_true", help="Scan providers for models with 'free' in schema")
+    p_routes.add_argument("--json", action="store_true", help="Output as JSON")
 
     # sessions
     p_sessions = subparsers.add_parser("sessions", help="Inspect worker sessions for a run")
     p_sessions.add_argument("run_dir", help="Directory of the run to inspect")
+    p_sessions.add_argument("--json", action="store_true", help="Output as JSON")
 
     # init
     p_init = subparsers.add_parser("init", help="Scaffold a new bulk triage task")
     p_init.add_argument("name", nargs="?", default="my_task", help="Name of the task directory to create")
+    p_init.add_argument("--json", action="store_true", help="Output as JSON")
 
     # test
     p_test = subparsers.add_parser("test", help="Dry run 1 batch to test prompt & grounding")
     p_test.add_argument("--task", required=True, help="Path to task.py definition")
     p_test.add_argument("--input", required=True, help="Path to sample input (.jsonl or .json)")
+    p_test.add_argument("--json", action="store_true", help="Output as JSON")
 
     # run
     p_run = subparsers.add_parser("run", help="Launch a bulk orchestration run")
@@ -257,6 +355,7 @@ def main():
     p_run.add_argument("--output-dir", help="Directory for run manifest and artifacts")
     p_run.add_argument("--output", help="Output path for exported clean packet JSON")
     p_run.add_argument("--run-id", help="Optional run identifier")
+    p_run.add_argument("--json", action="store_true", help="Output as JSON")
 
     # resume
     p_resume = subparsers.add_parser("resume", help="Resume an interrupted run")
@@ -268,16 +367,24 @@ def main():
     p_resume.add_argument("--output-dir", default=None)
     p_resume.add_argument("--output", default=None)
     p_resume.add_argument("--run-id", default=None)
+    p_resume.add_argument("--json", action="store_true", help="Output as JSON")
 
     # export
     p_export = subparsers.add_parser("export", help="Export clean packet from an existing run")
     p_export.add_argument("run_dir", help="Directory of the run")
     p_export.add_argument("--output", help="Output path for clean packet JSON")
+    p_export.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # serve (MCP Server)
+    p_serve = subparsers.add_parser("serve", help="Run MCP (Model Context Protocol) server over stdio")
 
     args = parser.parse_args()
     if not args.command:
-        ui.banner()
-        parser.print_help()
+        if args.json:
+            print(json.dumps({"error": "No command specified"}))
+        else:
+            ui.banner()
+            parser.print_help()
         sys.exit(0)
 
     if args.command == "routes":
@@ -294,6 +401,8 @@ def main():
         cmd_resume(args)
     elif args.command == "export":
         cmd_export(args)
+    elif args.command == "serve":
+        cmd_serve(args)
 
 if __name__ == "__main__":
     main()
