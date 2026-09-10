@@ -45,6 +45,8 @@ free-fleet eval my-task --input eval-sample.csv --id-column id --text-column bod
 ```bash
 free-fleet tasks --json
 free-fleet routes --json
+free-fleet cooldowns --json
+free-fleet cooldowns --clear
 free-fleet routes add ollama/llama3.2:latest --provider ollama --free
 free-fleet sessions my-run --json
 free-fleet status my-run --json
@@ -93,19 +95,20 @@ The queue uses WAL, foreign keys, busy timeout, and atomic `BEGIN IMMEDIATE` lea
 }
 ```
 
-The MCP server exposes 12 structured tools:
+The MCP server exposes 13 structured tools:
 1. `free_fleet_routes`: List admitted routes, optionally refresh.
-2. `free_fleet_register_task`: Register an immutable task revision.
-3. `free_fleet_tasks`: List registered task definitions.
-4. `free_fleet_test`: Run one batch through candidate models (supports `id_column`, `text_column`).
-5. `free_fleet_validate`: Offline task and input validation.
-6. `free_fleet_run`: Launch bounded resumable campaign (supports `id_column`, `text_column`, `policy`).
-7. `free_fleet_resume`: Resume pending batches from existing run.
-8. `free_fleet_status`: Real-time batch progress and per-route reliability metrics.
-9. `free_fleet_eval`: Benchmark routes against sample inputs and update ranking priors.
-10. `free_fleet_export`: Export clean packet (`format="json"|"csv"`).
-11. `free_fleet_schema`: View JSON Schemas or SQLite database schema.
-12. `free_fleet_doctor`: Check workspace health and provider readiness.
+2. `free_fleet_cooldowns`: Inspect active rate-limit route cooldowns or clear them.
+3. `free_fleet_register_task`: Register an immutable task revision.
+4. `free_fleet_tasks`: List registered task definitions.
+5. `free_fleet_test`: Run one batch through candidate models (supports `id_column`, `text_column`).
+6. `free_fleet_validate`: Offline task and input validation.
+7. `free_fleet_run`: Launch bounded resumable campaign (supports `id_column`, `text_column`, `policy`).
+8. `free_fleet_resume`: Resume pending batches from existing run.
+9. `free_fleet_status`: Real-time batch progress and per-route reliability metrics.
+10. `free_fleet_eval`: Benchmark routes against sample inputs and update ranking priors.
+11. `free_fleet_export`: Export clean packet (`format="json"|"csv"`).
+12. `free_fleet_schema`: View JSON Schemas or SQLite database schema.
+13. `free_fleet_doctor`: Check workspace health and provider readiness.
 
 The MCP database defaults to `<workspace>/free-fleet.db`. Task, input, database, and packet paths outside the root are refused.
 
