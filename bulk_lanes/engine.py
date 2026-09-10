@@ -1,43 +1,44 @@
-"""Core execution engine coordinating lanes, multi-session workers, and manifests."""
+"""Core execution engine coordinating SQLite-leased model workers."""
 import concurrent.futures
-import json
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from pydantic import ValidationError
 from .catalog import RouteCatalog
 from .export import export_clean_packet
-from .grounding import verify_grounding
-from .manifest import ManifestManager
+from .grounding import normalize_grounding
+from .models import CandidateModelOutput, InputItem, PackedBatch, ProviderReceipt, TaskSpec
 from .packer import pack_items
 from .providers.base import clean_llm_json
 from .providers.opencode import OpenCodeProvider
 from .providers.openrouter import OpenRouterProvider
-from .sandbox import SandboxRunner
 from .sessions import SessionPool, WorkerSession
-from .task import Task
-from . import ui
+from .store import BulkLanesStore, digest_json
 
 class Engine:
     def __init__(
         self,
-        task: Task,
+        task: TaskSpec,
         catalog: Optional[RouteCatalog] = None,
-        use_docker: Optional[bool] = None,
+        store: BulkLanesStore | None = None,
         max_attempts_per_batch: int = 3
     ):
         self.task = task
-        self.catalog = catalog or RouteCatalog()
-        self.sandbox = SandboxRunner(use_docker=use_docker)
-        self.opencode_prov = OpenCodeProvider(sandbox=self.sandbox)
+        self.store = store or (catalog.store if catalog else BulkLanesStore())
+        self.catalog = catalog or RouteCatalog(db_path=self.store.path)
+        self.opencode_prov = OpenCodeProvider()
         self.openrouter_prov = OpenRouterProvider()
         self.max_attempts_per_batch = max_attempts_per_batch
 
     def execute_batch(
         self,
         batch: Dict[str, Any],
-        session: Optional[WorkerSession] = None
+        session: Optional[WorkerSession] = None,
+        route_offset: int = 0,
+        route_attempt_limit: int | None = None,
     ) -> Tuple[bool, Optional[List[dict]], dict, Optional[str]]:
         """Executes a single multi-item batch within a worker session."""
+        batch = PackedBatch.model_validate(batch).model_dump(mode="json")
         batch_id = batch["batch_id"]
         items = batch["items"]
         session_id = session.session_id if session else None
@@ -48,28 +49,36 @@ class Engine:
             simplified_items.append({
                 "item_id": itm["item_id"],
                 "title": itm.get("title", ""),
-                "sections": [{"slice": s["slice_id"], "text": s["text"]} for s in itm.get("slices", [])]
+                "sections": [
+                    {
+                        "slice_id": s["slice_id"],
+                        "start": s["start"],
+                        "end": s["end"],
+                        "text": s["text"],
+                    }
+                    for s in itm.get("slices", [])
+                ]
             })
 
-        user_content = self.task.user_prompt_template.format(
-            items_json=json.dumps(simplified_items, indent=2)
-        )
+        user_content = self.task.render_prompt(simplified_items)
 
         # Get route ladder; prioritize session assigned route if provided
         ladder = self.catalog.get_ladder(task_seed=batch_id, free_only=True)
         if session and session.route_id in ladder:
             ladder = [session.route_id] + [r for r in ladder if r != session.route_id]
 
+        if ladder and route_offset:
+            start = route_offset % len(ladder)
+            ladder = ladder[start:] + ladder[:start]
+
         if not ladder:
-            ladder = self.catalog.get_ladder(task_seed=batch_id, free_only=False)
-        
-        if not ladder:
-            return False, None, {}, "No available routes configured in catalog."
+            return False, None, {}, "No enabled route has observed zero pricing."
 
         last_err = "No attempts made"
         last_receipt = {}
 
-        for route_id in ladder[:self.max_attempts_per_batch]:
+        attempt_limit = route_attempt_limit or self.max_attempts_per_batch
+        for route_id in ladder[:attempt_limit]:
             if route_id.startswith("openrouter/") or "openrouter" in route_id:
                 provider = self.openrouter_prov
             else:
@@ -78,10 +87,18 @@ class Engine:
             ok, response_text, receipt = provider.run_prompt(
                 route_id=route_id,
                 prompt=user_content,
-                system_prompt=self.task.system_prompt,
+                system_prompt=self.task.instructions,
                 session_id=session_id
             )
             last_receipt = receipt
+
+            try:
+                ProviderReceipt.model_validate(receipt)
+            except ValidationError as exc:
+                last_err = f"Invalid provider receipt from '{route_id}': {exc}"
+                if session:
+                    session.record_error(last_err)
+                continue
 
             if not ok:
                 last_err = receipt.get("error", "Unknown provider error")
@@ -103,22 +120,23 @@ class Engine:
                     session.record_error(last_err)
                 continue
 
-            extracted_items = parsed.get("items")
-            if not isinstance(extracted_items, list):
-                last_err = f"Missing 'items' array in response from '{route_id}'"
+            try:
+                candidate_output = CandidateModelOutput.model_validate(parsed)
+                for extracted_item in candidate_output.items:
+                    self.task.validate_claims(extracted_item.claims)
+            except (ValidationError, ValueError) as exc:
+                last_err = f"Typed output validation failed for '{route_id}': {exc}"
                 if session:
                     session.record_error(last_err)
                 continue
 
-            # Verify mathematical grounding (exact quote match against supplied slices)
-            grounded, ground_err = verify_grounding(
-                extracted_items=extracted_items,
+            output_items, ground_err = normalize_grounding(
+                extracted_items=candidate_output.items,
                 raw_cards=items,
-                quote_field=self.task.quote_field,
                 min_quote_chars=self.task.min_quote_chars
             )
 
-            if not grounded:
+            if output_items is None:
                 last_err = f"Grounding verification failed: {ground_err}"
                 if session:
                     session.record_error(last_err)
@@ -128,83 +146,94 @@ class Engine:
             if session:
                 tokens = receipt.get("usage", {}).get("total_tokens", 0) if isinstance(receipt.get("usage"), dict) else 0
                 cost = receipt.get("cost", 0.0) or 0.0
-                session.record_batch_success(items_count=len(extracted_items), tokens=tokens, cost=cost)
+                session.record_batch_success(items_count=len(output_items), tokens=tokens, cost=cost)
 
-            return True, extracted_items, receipt, None
+            return True, [item.model_dump(mode="json") for item in output_items], receipt, None
 
         return False, None, last_receipt, last_err
 
     def run_campaign(
         self,
-        raw_items: List[Dict[str, Any]],
-        run_dir: Path,
+        raw_items: list[InputItem | dict[str, Any]],
+        run_id: str,
+        input_path: str,
         concurrency: int = 4,
         max_attempts: int = 300,
         output_packet_path: Optional[Path] = None
     ) -> dict:
-        """Executes full bulk run with parallel sessions, resumption, and worker lanes."""
-        manifest = ManifestManager(run_dir=run_dir, total_items=len(raw_items), max_attempts=max_attempts)
+        """Register a campaign in SQLite, then execute its leased batches."""
         batches = pack_items(raw_items, batch_size=self.task.batch_size, max_slice_chars=self.task.max_slice_chars)
+        task_revision = self.store.register_task(self.task)
+        canonical_input = [
+            item.model_dump(mode="json", by_alias=True) if hasattr(item, "model_dump") else item
+            for item in raw_items
+        ]
+        output_path = (output_packet_path or Path("runs") / run_id / "clean_packet.json").expanduser().resolve()
+        self.store.create_run(
+            run_id=run_id,
+            task_revision_id=task_revision,
+            input_path=input_path,
+            input_digest=digest_json(canonical_input),
+            total_items=len(raw_items),
+            max_attempts=max_attempts,
+            batch_size=self.task.batch_size,
+            output_path=str(output_path),
+        )
+        self.store.enqueue_batches(run_id, batches, self.max_attempts_per_batch)
+        return self.resume_campaign(run_id, concurrency=concurrency, output_packet_path=output_path)
 
-        # Setup parallel worker session pool
+    def resume_campaign(
+        self,
+        run_id: str,
+        concurrency: int = 4,
+        output_packet_path: Optional[Path] = None,
+    ) -> dict:
+        """Resume pending SQLite queue work without reconstructing it from input files."""
+        self.task = self.store.get_run_task(run_id)
+
         available_free_routes = self.catalog.get_ladder(task_seed=str(time.time()), free_only=True)
+        if not available_free_routes:
+            raise RuntimeError("No enabled route has observed zero pricing.")
         session_pool = SessionPool(num_sessions=concurrency, routes=available_free_routes)
         sessions_list = session_pool.get_all_sessions()
 
-        pending_batches = []
-        for b in batches:
-            bid = b["batch_id"]
-            existing = manifest.data["batches"].get(bid)
-            if not existing or existing.get("status") != "verified":
-                pending_batches.append(b)
+        def session_worker(session: WorkerSession) -> None:
+            while True:
+                lease = self.store.lease_batch(run_id, session.session_id)
+                if lease is None:
+                    return
+                batch = lease["batch"]
+                ok, results, raw_receipt, error = self.execute_batch(
+                    batch,
+                    session=session,
+                    route_offset=lease["attempt_number"] - 1,
+                    route_attempt_limit=1,
+                )
+                try:
+                    receipt = ProviderReceipt.model_validate(raw_receipt) if raw_receipt else None
+                except ValidationError:
+                    receipt = None
+                if ok and results is not None and receipt is not None:
+                    self.store.complete_batch(run_id, lease["attempt_id"], session.session_id, results, receipt)
+                else:
+                    self.store.fail_batch(
+                        run_id,
+                        lease["attempt_id"],
+                        session.session_id,
+                        error or "Unknown error",
+                        receipt,
+                    )
 
-        ui.info(f"Loaded {len(raw_items)} items packed into {len(batches)} batches.")
-        ui.info(f"Orchestrating {concurrency} parallel worker sessions across free model lanes.")
-        if len(batches) - len(pending_batches) > 0:
-            ui.info(f"Resuming: {len(batches) - len(pending_batches)} batches already verified.")
-
-        total_pending = len(pending_batches)
-        completed_count = len(batches) - total_pending
-
-        def session_worker(session: WorkerSession, batch: Dict[str, Any]):
-            bid = batch["batch_id"]
-            item_ids = [it["item_id"] for it in batch["items"]]
-            
-            # Pre-reserve attempt before execution
-            reserved = manifest.reserve_batch(bid, item_ids)
-            if not reserved:
-                return bid, False, None, {}, "Attempt budget exceeded"
-
-            ok, res, receipt, err = self.execute_batch(batch, session=session)
-            if ok:
-                manifest.record_batch_success(bid, res, receipt)
-            else:
-                manifest.record_batch_failure(bid, err or "Unknown error", receipt)
-            return bid, ok, res, receipt, err
-
-        if pending_batches:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
-                # Map batches to sessions round-robin
-                futures = [
-                    executor.submit(session_worker, sessions_list[i % len(sessions_list)], batch)
-                    for i, batch in enumerate(pending_batches)
-                ]
-                for f in concurrent.futures.as_completed(futures):
-                    bid, ok, res, receipt, err = f.result()
-                    completed_count += 1
-                    status_text = "Verified" if ok else f"Failed ({err[:35]}...)"
-                    ui.print_progress(completed_count, len(batches), prefix="Progress:", suffix=status_text)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+            list(executor.map(session_worker, sessions_list))
 
         for s in sessions_list:
             s.finish()
 
-        # Save session stats in manifest
-        manifest.data["sessions"] = session_pool.to_dict()
-        manifest.finalize()
-
-        export_path = output_packet_path or (run_dir / "clean_packet.json")
-        packet = export_clean_packet(manifest.data, export_path)
+        self.store.save_sessions(run_id, session_pool.to_dict())
+        self.store.finalize_run(run_id)
+        snapshot = self.store.run_snapshot(run_id)
+        export_path = output_packet_path or Path(snapshot["output_path"])
+        packet = export_clean_packet(snapshot, export_path)
         
-        ui.success(f"Campaign finished! Clean packet exported to: {export_path}")
-        ui.info(f"Verified items: {packet['total_verified_records']} | Total tokens: {packet['audit']['total_tokens_consumed']}")
         return packet

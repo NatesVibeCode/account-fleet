@@ -1,336 +1,342 @@
 {
-  "revision": 1,
+  "revision": 2,
   "routes": [
     {
       "id": "opencode/mimo-v2.5-free",
       "provider": "opencode",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "hosted-free",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "opencode models opencode --verbose (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "opencode/big-pickle",
       "provider": "opencode",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "hosted-free",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "opencode models opencode --verbose (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "opencode/ling-3.0-flash-fin-free",
       "provider": "opencode",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "hosted-free",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "opencode models opencode --verbose (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "opencode/nemotron-3-ultra-free",
       "provider": "opencode",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "hosted-free",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "opencode models opencode --verbose (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "opencode/nemotron-3.5-lightning-free",
       "provider": "opencode",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "hosted-free",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "opencode models opencode --verbose (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/minimax/minimax-01:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
-      "cost_per_1k_output": 0.0
+      "cost_per_1k_output": 0.0,
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/meta-llama/llama-3.3-70b-instruct:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
-      "cost_per_1k_output": 0.0
+      "cost_per_1k_output": 0.0,
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/deepseek/deepseek-chat",
       "provider": "openrouter",
       "enabled": false,
-      "zero_price_verified": false,
+      "price_state": "unknown",
       "auth": "api-key",
       "cost_per_1k_input": 0.00014,
-      "cost_per_1k_output": 0.00028
+      "cost_per_1k_output": 0.00028,
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "opencode/muse-spark-1.2-contributor-free",
       "provider": "opencode",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "hosted-free",
-      "last_verified": "2026-09-09",
-      "verification_source": "opencode models opencode --verbose (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "opencode/muse-spark-1.3-contributor-free",
       "provider": "opencode",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "hosted-free",
-      "last_verified": "2026-09-09",
-      "verification_source": "opencode models opencode --verbose (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/nex-agi/nex-n2.5-mini:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/nex-agi/nex-n2.5-pro:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/inclusionai/ling-3.0-flash-sante:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/inclusionai/ling-3.0-flash-fin:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/dots-studio/dots-3-note-preview:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/liquid/lfm-2.5-2.6b:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/nvidia/nemotron-3.5-lightning:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/thinkingmachines/inkling-small:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/poolside/laguna-s-2.1:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/thinkingmachines/inkling:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/poolside/laguna-xs-2.1:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/cohere/north-mini-code:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/nvidia/nemotron-3.5-content-safety:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/google/gemma-4-26b-a4b-it:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/google/gemma-4-31b-it:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/google/lyria-3-pro-preview",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/google/lyria-3-clip-preview",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     },
     {
       "id": "openrouter/free",
       "provider": "openrouter",
-      "enabled": true,
-      "zero_price_verified": true,
+      "enabled": false,
+      "price_state": "candidate",
       "auth": "api-key",
       "cost_per_1k_input": 0.0,
       "cost_per_1k_output": 0.0,
-      "last_verified": "2026-09-09",
-      "verification_source": "openrouter /api/v1/models (schema scan)"
+      "last_verified": null,
+      "verification_source": "packaged route hint; refresh required"
     }
   ]
 }

@@ -1,0 +1,68 @@
+{
+  "$id": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "const": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+      "default": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+      "title": "$Schema",
+      "type": "string"
+    },
+    "format_version": {
+      "const": "bulk_lanes_task_v1",
+      "default": "bulk_lanes_task_v1",
+      "title": "Format Version",
+      "type": "string"
+    },
+    "name": {
+      "description": "Stable task name",
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "title": "Name",
+      "type": "string"
+    },
+    "instructions": {
+      "default": "Extract only facts supported by the supplied source slices.",
+      "description": "Outcome-specific directions; field structure belongs in claims_schema",
+      "title": "Instructions",
+      "type": "string"
+    },
+    "batch_size": {
+      "default": 6,
+      "description": "Maximum input items per model request",
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Batch Size",
+      "type": "integer"
+    },
+    "max_slice_chars": {
+      "default": 6000,
+      "description": "Maximum source characters exposed per item",
+      "maximum": 100000,
+      "minimum": 300,
+      "title": "Max Slice Chars",
+      "type": "integer"
+    },
+    "min_quote_chars": {
+      "default": 15,
+      "description": "Minimum admitted evidence-quote length",
+      "maximum": 10000,
+      "minimum": 1,
+      "title": "Min Quote Chars",
+      "type": "integer"
+    },
+    "claims_schema": {
+      "additionalProperties": true,
+      "description": "Draft 2020-12 object schema; type=object and additionalProperties=false are required",
+      "title": "Claims Schema",
+      "type": "object"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "TaskSpec",
+  "type": "object"
+}

@@ -1,408 +1,429 @@
-"""Universal Command Line Interface for bulk-lanes.
-Supports interactive human TUI, pure machine-readable JSON mode (--json),
-and standard MCP server mode (bulk-lanes serve) for any agent harness.
-"""
+"""Human and machine CLI for the SQLite-backed bulk-lanes control plane."""
+from __future__ import annotations
+
 import argparse
+import importlib.metadata
 import json
+import os
+import shlex
+import shutil
 import sys
 import time
 from pathlib import Path
-from typing import List
+from typing import Any
 
 from . import ui
 from .catalog import RouteCatalog
 from .engine import Engine
 from .export import export_clean_packet
-from .manifest import ManifestManager
-from .task import Task, load_task
+from .input_data import load_input_items
+from .models import (
+    CandidateModelOutput,
+    CleanPacket,
+    DoctorCheck,
+    DoctorReport,
+    InputItem,
+    ModelOutput,
+    TaskSpec,
+    ValidationReport,
+)
+from .packer import pack_items
+from .store import BulkLanesStore, SCHEMA_SQL, SCHEMA_VERSION, default_db_path
+from .setup import installed_skill_matches, setup_workspace, skill_destination
+from .task import load_task_spec
 
-def cmd_routes(args):
-    cat = RouteCatalog()
-    refresh_stats = {}
-    if getattr(args, "refresh", False):
-        if not args.json:
-            ui.banner()
-            ui.info("Scanning provider catalogues (OpenCode + OpenRouter) for free models in schema...")
-        refresh_stats = cat.refresh_all()
-        if not args.json:
-            for prov, val in refresh_stats.items():
-                if prov.endswith("_error"):
-                    ui.warn(f"Provider {prov.replace('_error', '')} notice: {val}")
-                else:
-                    ui.success(f"Provider '{prov}': {val} free models discovered from schema.")
 
-    free_only = not args.all
-    routes = cat.get_routes(free_only=free_only)
-
-    if args.json:
-        out = {
-            "status": "ok",
-            "free_only": free_only,
-            "total_routes": len(routes),
-            "refresh": refresh_stats if args.refresh else None,
-            "routes": routes
-        }
-        print(json.dumps(out, indent=2))
-        return
-
-    if not getattr(args, "refresh", False):
-        ui.banner()
-    if not routes:
-        ui.warn("No routes found matching filter.")
-        return
-    ui.info(f"Showing {'all configured' if args.all else 'active free/zero-price'} routes:")
-    ui.print_routes_table(routes)
-
-def cmd_sessions(args):
-    run_dir = Path(args.run_dir)
-    manifest_path = run_dir / "manifest.json"
-    if not manifest_path.exists():
-        if args.json:
-            print(json.dumps({"error": f"Manifest not found in {run_dir}"}))
-        else:
-            ui.error(f"No run manifest found in {run_dir}")
-        return
-
-    data = json.loads(manifest_path.read_text())
-    sessions = data.get("sessions", {})
-    
-    if args.json:
-        print(json.dumps({"run_id": data.get("run_id"), "sessions": sessions}, indent=2))
-        return
-
-    ui.banner()
-    if not sessions:
-        ui.info(f"No active or recorded worker sessions found in run '{data.get('run_id')}'.")
-        return
-
-    ui.info(f"Worker sessions recorded for run '{data.get('run_id')}':")
-    ui.print_sessions_table(sessions)
-
-def cmd_init(args):
-    task_name = args.name or "my_task"
-    task_dir = Path(task_name)
-    task_dir.mkdir(parents=True, exist_ok=True)
-
-    task_file = task_dir / "task.py"
-    data_file = task_dir / "sample_input.jsonl"
-
-    task_code = '''from bulk_lanes import Task
-
-class CustomTriageTask(Task):
-    name = "''' + task_name + '''"
-    batch_size = 4
-    min_quote_chars = 15
-    quote_field = "quotes"
-
-    system_prompt = (
-        "You are an air-gapped triage worker. "
-        "Analyze the items and extract structured facts. "
-        "Every claim MUST provide an exact verbatim quote from the source text as evidence."
-    )
-
-    user_prompt_template = """
-Analyze the following items and return JSON matching this schema:
-{
-  "items": [
-    {
-      "item_id": "<id>",
-      "summary": "<one sentence description>",
-      "category": "<category or classification>",
-      "quotes": ["<exact quote from text>"]
-    }
-  ]
+PRESETS: dict[str, dict[str, Any]] = {
+    "summarize": {
+        "instructions": "Summarize each item using only supported source facts.",
+        "properties": {"summary": {"type": "string"}},
+        "required": ["summary"],
+    },
+    "classify": {
+        "instructions": "Classify each item and give a short supported summary.",
+        "properties": {"label": {"type": "string"}, "summary": {"type": "string"}},
+        "required": ["label", "summary"],
+    },
+    "extract": {
+        "instructions": "Extract a short supported summary and the named entities present in the source.",
+        "properties": {
+            "summary": {"type": "string"},
+            "entities": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["summary", "entities"],
+    },
+    "triage": {
+        "instructions": "Assign a supported triage priority and explain why.",
+        "properties": {
+            "priority": {"enum": ["high", "medium", "low", "unknown"]},
+            "reason": {"type": "string"},
+        },
+        "required": ["priority", "reason"],
+    },
 }
 
-Items to triage:
-{items_json}
-"""
-'''
-    sample_records = [
-        {"item_id": "item_01", "title": "Acme Metrics", "text": "Acme Metrics provides real-time latency monitoring for distributed cloud microservices with sub-millisecond alerting."},
-        {"item_id": "item_02", "title": "Beta Auth", "text": "Beta Auth is a passkey-first identity provider offering developer SDKs in Python, Rust, and TypeScript with zero monthly minimums."},
-        {"item_id": "item_03", "title": "Gamma DB", "text": "Gamma DB is an embedded vector search engine written in C++ that supports disk-backed HNSW indexing for billion-scale datasets."},
-        {"item_id": "item_04", "title": "Delta Shield", "text": "Delta Shield monitors internal Kubernetes clusters for anomalous egress traffic and automatically isolates compromised pods in seconds."}
-    ]
 
-    task_file.write_text(task_code)
-    with data_file.open("w") as f:
-        for r in sample_records:
-            f.write(json.dumps(r) + "\n")
-
-    if args.json:
-        print(json.dumps({"status": "created", "task_file": str(task_file), "sample_data": str(data_file)}, indent=2))
-        return
-
-    ui.banner()
-    ui.success(f"Initialized new task in '{task_dir}/'")
-    print(f"\nRun a dry-run test:\n  bulk-lanes test --task {task_file} --input {data_file}\n")
-    print(f"Run a bulk execution:\n  bulk-lanes run --task {task_file} --input {data_file}\n")
-
-def _load_input_data(input_path_str: str) -> List[dict]:
-    p = Path(input_path_str)
-    if not p.exists():
-        raise FileNotFoundError(f"Input file not found: {input_path_str}")
-    
-    items = []
-    if p.suffix == ".jsonl":
-        for line in p.read_text().splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    items.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-    elif p.suffix == ".json":
-        data = json.loads(p.read_text())
-        if isinstance(data, list):
-            items = data
-        elif isinstance(data, dict) and "items" in data:
-            items = data["items"]
-    else:
-        raise ValueError(f"Unsupported file format '{p.suffix}'. Use .json or .jsonl")
-    return items
-
-def cmd_test(args):
-    task = load_task(args.task)
+def _package_version() -> str:
     try:
-        items = _load_input_data(args.input)
-    except Exception as e:
-        if args.json:
-            print(json.dumps({"ok": False, "error": str(e)}))
-            sys.exit(1)
-        ui.error(str(e))
-        sys.exit(1)
+        return importlib.metadata.version("bulk-lanes")
+    except importlib.metadata.PackageNotFoundError:
+        return "0.2.0"
 
-    if not items:
-        if args.json:
-            print(json.dumps({"ok": False, "error": "No items found in input file."}))
-            sys.exit(1)
-        ui.error("No items found in input file.")
-        return
-    
-    test_items = items[:task.batch_size]
-    if not args.json:
-        ui.banner()
-        ui.info(f"Dry-run test: executing 1 batch of {len(test_items)} item(s) using task '{task.name}'...")
 
-    engine = Engine(task=task)
-    from .packer import pack_items
-    batches = pack_items(test_items, batch_size=task.batch_size, max_slice_chars=task.max_slice_chars)
-    if not batches:
-        if args.json:
-            print(json.dumps({"ok": False, "error": "Could not pack items into batch."}))
-            sys.exit(1)
-        ui.error("Could not pack items into batch.")
-        return
-
-    b = batches[0]
-    if not args.json:
-        ui.info(f"Dispatching test batch '{b['batch_id']}' across available free model ladder...")
-    ok, results, receipt, err = engine.execute_batch(b)
-
-    if args.json:
-        res_payload = {
-            "ok": ok,
-            "route_used": receipt.get("requested_route") if receipt else None,
-            "cost": receipt.get("cost") if receipt else None,
-            "duration_seconds": receipt.get("duration_seconds") if receipt else None,
-            "results": results,
-            "error": err
-        }
-        print(json.dumps(res_payload, indent=2))
-        sys.exit(0 if ok else 1)
-
-    print("\n" + "=" * 80)
-    if ok:
-        ui.success("Batch successfully executed and passed mathematical grounding!")
-        ui.info(f"Route used: {receipt.get('requested_route')}")
-        ui.info(f"Reported cost: {receipt.get('cost')} ({receipt.get('cost_status')})")
-        ui.info(f"Duration: {receipt.get('duration_seconds', 0):.2f}s")
-        print("\nExtracted Items:")
-        print(json.dumps(results, indent=2))
+def _emit(value: Any, json_mode: bool, human: str | None = None) -> None:
+    payload = value.model_dump(mode="json", by_alias=True) if hasattr(value, "model_dump") else value
+    if json_mode or human is None:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        ui.error(f"Execution or grounding failed: {err}")
-        if receipt:
-            ui.warn(f"Last receipt: {json.dumps(receipt, indent=2)}")
-    print("=" * 80 + "\n")
+        print(human)
 
-def cmd_run(args):
-    task = load_task(args.task)
-    try:
-        items = _load_input_data(args.input)
-    except Exception as e:
-        if args.json:
-            print(json.dumps({"status": "error", "error": str(e)}))
-            sys.exit(1)
-        ui.error(str(e))
-        sys.exit(1)
 
-    if not items:
-        if args.json:
-            print(json.dumps({"status": "error", "error": "No input items to process."}))
-            sys.exit(1)
-        ui.error("No input items to process.")
-        return
+def _store(args: argparse.Namespace) -> BulkLanesStore:
+    return BulkLanesStore(Path(args.db) if getattr(args, "db", None) else default_db_path())
 
-    concurrency = args.sessions or args.concurrency or 4
-    run_id = args.run_id or f"run_{task.name}_{int(time.time())}"
-    run_dir = Path(args.output_dir or f"runs/{run_id}")
-    out_packet = Path(args.output) if args.output else (run_dir / "clean_packet.json")
 
-    if not args.json:
+def _resolve_task(reference: str, store: BulkLanesStore) -> TaskSpec:
+    path = Path(reference)
+    if path.is_file():
+        spec = load_task_spec(path)
+        store.register_task(spec)
+        return spec
+    return store.get_task(reference)
+
+
+def cmd_routes(args: argparse.Namespace) -> None:
+    catalog = RouteCatalog(db_path=_store(args).path)
+    refresh = catalog.refresh_all() if args.refresh else None
+    routes = catalog.get_routes(free_only=not args.all, include_disabled=args.all)
+    if args.json:
+        _emit({"routes": routes, "count": len(routes), "refresh": refresh}, True)
+    else:
         ui.banner()
-        ui.info(f"Starting bulk campaign '{run_id}'")
-        ui.info(f"Items: {len(items)} | Parallel Worker Sessions: {concurrency}")
+        ui.print_routes_table(routes)
 
-    engine = Engine(task=task)
-    packet = engine.run_campaign(
-        raw_items=items,
-        run_dir=run_dir,
-        concurrency=concurrency,
-        max_attempts=args.max_attempts,
-        output_packet_path=out_packet
+
+def cmd_tasks(args: argparse.Namespace) -> None:
+    tasks = _store(args).list_tasks()
+    human = "No tasks registered." if not tasks else "\n".join(
+        f"{task['task_name']}  {task['revision_id'][:12]}" for task in tasks
+    )
+    _emit({"tasks": tasks, "count": len(tasks)}, args.json, human)
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    preset = PRESETS[args.preset]
+    spec = TaskSpec(
+        name=args.name,
+        instructions=preset["instructions"],
+        batch_size=args.batch_size,
+        claims_schema={
+            "type": "object",
+            "properties": preset["properties"],
+            "required": preset["required"],
+            "additionalProperties": False,
+        },
+    )
+    store = _store(args)
+    revision = store.register_task(spec)
+    sample_path = Path(args.sample or f"{args.name}.sample.jsonl")
+    if not sample_path.exists():
+        sample_path.parent.mkdir(parents=True, exist_ok=True)
+        sample = InputItem(item_id="item_1", title="Example", text="Replace this text with the source you want to process.")
+        sample_path.write_text(json.dumps(sample.model_dump(mode="json", by_alias=True), ensure_ascii=False) + "\n")
+    _emit(
+        {
+            "created": True,
+            "task": spec.name,
+            "preset": args.preset,
+            "revision": revision,
+            "database": str(store.path.resolve()),
+            "sample_input": str(sample_path),
+            "next": f"bulk-lanes validate {spec.name} --input {sample_path}",
+        },
+        args.json,
+        f"Created task '{spec.name}' from preset '{args.preset}'.\n"
+        f"Sample: {sample_path}\nNext: bulk-lanes validate {spec.name} --input {sample_path}",
     )
 
-    if args.json:
-        print(json.dumps(packet, indent=2))
 
-def cmd_resume(args):
-    run_dir = Path(args.run_dir)
-    manifest_path = run_dir / "manifest.json"
-    if not manifest_path.exists():
-        if args.json:
-            print(json.dumps({"status": "error", "error": f"No manifest found in {run_dir}"}))
-            sys.exit(1)
-        ui.error(f"No manifest found in {run_dir}")
-        return
-    
-    manifest_data = json.loads(manifest_path.read_text())
-    if not args.json:
-        ui.banner()
-        ui.info(f"Resuming run '{manifest_data.get('run_id')}' from {run_dir}")
-    
-    if not args.input or not args.task:
-        err = "Resuming requires specifying --task and --input to reconstruct pending items."
-        if args.json:
-            print(json.dumps({"status": "error", "error": err}))
-            sys.exit(1)
-        ui.error(err)
-        return
-        
-    cmd_run(args)
+def cmd_validate(args: argparse.Namespace) -> None:
+    store = _store(args)
+    task = _resolve_task(args.task, store)
+    items = load_input_items(args.input)
+    batches = pack_items(items, task.batch_size, task.max_slice_chars)
+    _emit(
+        ValidationReport(valid=True, task=task.name, input_items=len(items), batches=len(batches)),
+        args.json,
+        f"Valid. Task '{task.name}' will process {len(items)} items in {len(batches)} batches.",
+    )
 
-def cmd_export(args):
-    run_dir = Path(args.run_dir)
-    manifest_path = run_dir / "manifest.json"
-    if not manifest_path.exists():
-        if args.json:
-            print(json.dumps({"status": "error", "error": f"No manifest found in {run_dir}"}))
-            sys.exit(1)
-        ui.error(f"No manifest found in {run_dir}")
-        return
-    manifest_data = json.loads(manifest_path.read_text())
-    out_path = Path(args.output or (run_dir / "clean_packet.json"))
-    packet = export_clean_packet(manifest_data, out_path)
-    
-    if args.json:
-        print(json.dumps(packet, indent=2))
-        return
 
-    ui.banner()
-    ui.success(f"Exported clean packet to: {out_path}")
-    ui.info(f"Total records: {packet['total_verified_records']}")
+def cmd_test(args: argparse.Namespace) -> None:
+    store = _store(args)
+    task = _resolve_task(args.task, store)
+    items = load_input_items(args.input)
+    batch = pack_items(items[: task.batch_size], task.batch_size, task.max_slice_chars)[0]
+    engine = Engine(task=task, store=store)
+    ok, results, receipt, error = engine.execute_batch(batch)
+    _emit(
+        {"ok": ok, "results": results, "receipt": receipt or None, "error": error},
+        args.json,
+        f"{'Passed' if ok else 'Failed'} one batch.\n{json.dumps(results if ok else {'error': error}, indent=2)}",
+    )
+    if not ok:
+        raise SystemExit(1)
 
-def cmd_serve(args):
+
+def cmd_run(args: argparse.Namespace) -> None:
+    store = _store(args)
+    task = _resolve_task(args.task, store)
+    items = load_input_items(args.input)
+    run_id = args.run_id or f"{task.name}-{int(time.time())}"
+    output = Path(args.output or f"runs/{run_id}/clean_packet.json")
+    packet = Engine(task=task, store=store).run_campaign(
+        raw_items=items,
+        run_id=run_id,
+        input_path=str(Path(args.input).resolve()),
+        concurrency=args.sessions,
+        max_attempts=args.max_attempts,
+        output_packet_path=output,
+    )
+    _emit(
+        {"run_id": run_id, "packet": str(output), "result": packet},
+        args.json,
+        f"Run '{run_id}' {store.run_snapshot(run_id)['status']}.\nPacket: {output}\nVerified records: {packet['total_verified_records']}",
+    )
+
+
+def cmd_resume(args: argparse.Namespace) -> None:
+    store = _store(args)
+    task = store.get_run_task(args.run_id)
+    snapshot = store.run_snapshot(args.run_id)
+    output = Path(args.output or snapshot["output_path"])
+    packet = Engine(task=task, store=store).resume_campaign(
+        args.run_id,
+        concurrency=args.sessions,
+        output_packet_path=output,
+    )
+    _emit(
+        {"run_id": args.run_id, "packet": str(output), "result": packet},
+        args.json,
+        f"Run '{args.run_id}' {store.run_snapshot(args.run_id)['status']}.\nPacket: {output}\nVerified records: {packet['total_verified_records']}",
+    )
+
+
+def cmd_sessions(args: argparse.Namespace) -> None:
+    snapshot = _store(args).run_snapshot(args.run_id)
+    _emit(
+        {"run_id": args.run_id, "status": snapshot["status"], "sessions": snapshot["sessions"]},
+        args.json,
+        f"Run '{args.run_id}' is {snapshot['status']}. Recorded worker sessions: {len(snapshot['sessions'])}.",
+    )
+
+
+def cmd_export(args: argparse.Namespace) -> None:
+    store = _store(args)
+    snapshot = store.run_snapshot(args.run_id)
+    output = Path(args.output or snapshot["output_path"])
+    packet = export_clean_packet(snapshot, output)
+    _emit(
+        {"run_id": args.run_id, "packet": str(output), "result": packet},
+        args.json,
+        f"Exported {packet['total_verified_records']} verified records to {output}.",
+    )
+
+
+def cmd_schema(args: argparse.Namespace) -> None:
+    models = {
+        "task": TaskSpec,
+        "input": InputItem,
+        "candidate-output": CandidateModelOutput,
+        "output": ModelOutput,
+        "packet": CleanPacket,
+    }
+    schema = (
+        {"schema_version": SCHEMA_VERSION, "sql": SCHEMA_SQL}
+        if args.kind == "database"
+        else models[args.kind].model_json_schema(by_alias=True)
+    )
+    _emit(schema, True)
+
+
+def cmd_setup(args: argparse.Namespace) -> None:
+    report = setup_workspace(
+        scope=args.scope,
+        workspace_root=args.workspace_root,
+        db_path=args.db,
+        skill_root=args.skill_root,
+        dry_run=args.dry_run,
+        force=args.force,
+        refresh_routes=args.refresh_routes,
+    )
+    next_lines = "\n".join(shlex.join(command) for command in report.next_commands)
+    _emit(
+        report,
+        args.json,
+        f"Configured bulk-lanes at {report.skill_path}.\n"
+        f"Database: {report.database}\nNext:\n{next_lines}",
+    )
+
+
+def cmd_doctor(args: argparse.Namespace) -> None:
+    store = _store(args)
+    catalog = RouteCatalog(db_path=store.path)
+    observed_routes = catalog.get_routes(free_only=True)
+    opencode = shutil.which("opencode")
+    openrouter_key = bool(os.environ.get("OPENROUTER_API_KEY"))
+    checks = [
+        DoctorCheck(name="database", ok=store.schema_version() == "1", detail=f"SQLite schema {store.schema_version()} at {store.path.resolve()}"),
+        DoctorCheck(name="opencode", ok=bool(opencode), detail=opencode or "opencode not found in PATH"),
+        DoctorCheck(name="openrouter", ok=openrouter_key, detail="OPENROUTER_API_KEY configured" if openrouter_key else "optional key not configured"),
+        DoctorCheck(name="routes", ok=bool(observed_routes), detail=f"{len(observed_routes)} enabled observed-zero routes"),
+    ]
+    workspace = Path(args.workspace_root).expanduser().resolve()
+    destination = skill_destination(args.scope, Path.home().resolve(), workspace, args.skill_root)
+    skill_ok = installed_skill_matches(destination)
+    checks.append(DoctorCheck(
+        name="skill",
+        ok=skill_ok,
+        detail=str(destination) if skill_ok else f"missing or outdated at {destination}",
+    ))
+    ready = checks[0].ok and checks[3].ok and (checks[1].ok or checks[2].ok)
+    report = DoctorReport(ready=ready, database=str(store.path.resolve()), checks=checks)
+    human = "\n".join(f"{'OK' if check.ok else '--'}  {check.name}: {check.detail}" for check in checks)
+    _emit(report, args.json, f"{'Ready' if ready else 'Not ready'}\n{human}")
+    if not ready:
+        raise SystemExit(1)
+
+
+def cmd_serve(args: argparse.Namespace) -> None:
     from .mcp_server import run_mcp_server
-    run_mcp_server()
 
-def main():
+    run_mcp_server(args.workspace_root, args.db)
+
+
+def _common(parser: argparse.ArgumentParser, *, json_output: bool = True, database: bool = True) -> None:
+    if database:
+        parser.add_argument("--db", help="SQLite control-plane path (default: ./bulk-lanes.db)")
+    if json_output:
+        parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="bulk-lanes",
-        description="Air-Gapped Bulk Model Lane Orchestrator for any harness (OpenCode + OpenRouter)"
+        description="Typed bulk classification, extraction, summarization, and triage",
     )
-    parser.add_argument("--json", action="store_true", help="Machine-readable JSON output for agent harnesses")
-    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_package_version()}")
+    parser.add_argument("--json", dest="global_json", action="store_true", help="Emit machine-readable JSON")
+    commands = parser.add_subparsers(dest="command", required=True)
 
-    # routes
-    p_routes = subparsers.add_parser("routes", help="List available model lanes")
-    p_routes.add_argument("--all", action="store_true", help="Show all routes including billable and disabled")
-    p_routes.add_argument("--refresh", action="store_true", help="Scan providers for models with 'free' in schema")
-    p_routes.add_argument("--json", action="store_true", help="Output as JSON")
+    setup = commands.add_parser("setup", help="Bootstrap a portable harness workspace")
+    setup.add_argument("--scope", choices=["user", "project"], default="project")
+    setup.add_argument("--workspace-root", default=".")
+    setup.add_argument("--skill-root", help="Advanced: nonstandard parent directory for installed skills")
+    setup.add_argument("--db", help="SQLite path below the workspace root")
+    setup.add_argument("--refresh-routes", action="store_true", help="Contact providers and record current pricing")
+    setup.add_argument("--dry-run", action="store_true", help="Return the setup plan without writing")
+    setup.add_argument("--force", action="store_true", help="Update managed skill files when the destination differs")
+    setup.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
 
-    # sessions
-    p_sessions = subparsers.add_parser("sessions", help="Inspect worker sessions for a run")
-    p_sessions.add_argument("run_dir", help="Directory of the run to inspect")
-    p_sessions.add_argument("--json", action="store_true", help="Output as JSON")
+    routes = commands.add_parser("routes", help="List or refresh model routes")
+    routes.add_argument("--all", action="store_true", help="Include non-zero, candidate, and disabled routes")
+    routes.add_argument("--refresh", action="store_true", help="Contact providers and update route observations")
+    _common(routes)
 
-    # init
-    p_init = subparsers.add_parser("init", help="Scaffold a new bulk triage task")
-    p_init.add_argument("name", nargs="?", default="my_task", help="Name of the task directory to create")
-    p_init.add_argument("--json", action="store_true", help="Output as JSON")
+    tasks = commands.add_parser("tasks", help="List registered task definitions")
+    _common(tasks)
 
-    # test
-    p_test = subparsers.add_parser("test", help="Dry run 1 batch to test prompt & grounding")
-    p_test.add_argument("--task", required=True, help="Path to task.py definition")
-    p_test.add_argument("--input", required=True, help="Path to sample input (.jsonl or .json)")
-    p_test.add_argument("--json", action="store_true", help="Output as JSON")
+    init = commands.add_parser("init", help="Create a typed task from a preset")
+    init.add_argument("name")
+    init.add_argument("--preset", choices=sorted(PRESETS), default="classify")
+    init.add_argument("--batch-size", type=int, default=4)
+    init.add_argument("--sample", help="Sample input path")
+    _common(init)
 
-    # run
-    p_run = subparsers.add_parser("run", help="Launch a bulk orchestration run")
-    p_run.add_argument("--task", required=True, help="Path to task.py definition")
-    p_run.add_argument("--input", required=True, help="Path to input data (.jsonl or .json)")
-    p_run.add_argument("--sessions", "--concurrency", dest="sessions", type=int, default=4, help="Number of parallel worker sessions (default: 4)")
-    p_run.add_argument("--max-attempts", type=int, default=300, help="Attempt ceiling across campaign")
-    p_run.add_argument("--output-dir", help="Directory for run manifest and artifacts")
-    p_run.add_argument("--output", help="Output path for exported clean packet JSON")
-    p_run.add_argument("--run-id", help="Optional run identifier")
-    p_run.add_argument("--json", action="store_true", help="Output as JSON")
+    validate = commands.add_parser("validate", help="Validate a task and input without inference")
+    validate.add_argument("task", help="Registered task name or TaskSpec JSON path")
+    validate.add_argument("--input", required=True)
+    _common(validate)
 
-    # resume
-    p_resume = subparsers.add_parser("resume", help="Resume an interrupted run")
-    p_resume.add_argument("run_dir", help="Directory of the run to resume")
-    p_resume.add_argument("--task", required=True, help="Path to task.py")
-    p_resume.add_argument("--input", required=True, help="Path to original input file")
-    p_resume.add_argument("--sessions", "--concurrency", dest="sessions", type=int, default=4)
-    p_resume.add_argument("--max-attempts", type=int, default=300)
-    p_resume.add_argument("--output-dir", default=None)
-    p_resume.add_argument("--output", default=None)
-    p_resume.add_argument("--run-id", default=None)
-    p_resume.add_argument("--json", action="store_true", help="Output as JSON")
+    test = commands.add_parser("test", help="Run one real inference batch")
+    test.add_argument("task", help="Registered task name or TaskSpec JSON path")
+    test.add_argument("--input", required=True)
+    _common(test)
 
-    # export
-    p_export = subparsers.add_parser("export", help="Export clean packet from an existing run")
-    p_export.add_argument("run_dir", help="Directory of the run")
-    p_export.add_argument("--output", help="Output path for clean packet JSON")
-    p_export.add_argument("--json", action="store_true", help="Output as JSON")
+    run = commands.add_parser("run", help="Create and execute a resumable run")
+    run.add_argument("task", help="Registered task name or TaskSpec JSON path")
+    run.add_argument("--input", required=True)
+    run.add_argument("--sessions", type=int, default=4)
+    run.add_argument("--max-attempts", type=int, default=300)
+    run.add_argument("--run-id")
+    run.add_argument("--output")
+    _common(run)
 
-    # serve (MCP Server)
-    p_serve = subparsers.add_parser("serve", help="Run MCP (Model Context Protocol) server over stdio")
+    resume = commands.add_parser("resume", help="Resume a run from its SQLite queue")
+    resume.add_argument("run_id")
+    resume.add_argument("--sessions", type=int, default=4)
+    resume.add_argument("--output")
+    _common(resume)
 
+    sessions = commands.add_parser("sessions", help="Inspect recorded run sessions")
+    sessions.add_argument("run_id")
+    _common(sessions)
+
+    export = commands.add_parser("export", help="Export a validated packet from a run")
+    export.add_argument("run_id")
+    export.add_argument("--output")
+    _common(export)
+
+    schema = commands.add_parser("schema", help="Print an admitted JSON Schema")
+    schema.add_argument("kind", choices=["task", "input", "candidate-output", "output", "packet", "database"])
+
+    doctor = commands.add_parser("doctor", help="Check the local CLI, database, auth, and routes")
+    doctor.add_argument("--scope", choices=["user", "project"], default="project")
+    doctor.add_argument("--workspace-root", default=".")
+    doctor.add_argument("--skill-root", help="Advanced: nonstandard parent directory for installed skills")
+    _common(doctor)
+
+    serve = commands.add_parser("serve", help="Run the MCP server over stdio")
+    serve.add_argument("--workspace-root", default=".")
+    serve.add_argument("--db", help="SQLite path below workspace root")
+
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
     args = parser.parse_args()
-    if not args.command:
-        if args.json:
-            print(json.dumps({"error": "No command specified"}))
+    if getattr(args, "global_json", False):
+        args.json = True
+    handlers = {
+        "setup": cmd_setup,
+        "routes": cmd_routes,
+        "tasks": cmd_tasks,
+        "init": cmd_init,
+        "validate": cmd_validate,
+        "test": cmd_test,
+        "run": cmd_run,
+        "resume": cmd_resume,
+        "sessions": cmd_sessions,
+        "export": cmd_export,
+        "schema": cmd_schema,
+        "doctor": cmd_doctor,
+        "serve": cmd_serve,
+    }
+    try:
+        handlers[args.command](args)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        if getattr(args, "json", False):
+            print(json.dumps({"ok": False, "error": str(exc)}))
         else:
-            ui.banner()
-            parser.print_help()
-        sys.exit(0)
+            ui.error(str(exc))
+        raise SystemExit(1) from exc
 
-    if args.command == "routes":
-        cmd_routes(args)
-    elif args.command == "sessions":
-        cmd_sessions(args)
-    elif args.command == "init":
-        cmd_init(args)
-    elif args.command == "test":
-        cmd_test(args)
-    elif args.command == "run":
-        cmd_run(args)
-    elif args.command == "resume":
-        cmd_resume(args)
-    elif args.command == "export":
-        cmd_export(args)
-    elif args.command == "serve":
-        cmd_serve(args)
 
 if __name__ == "__main__":
     main()

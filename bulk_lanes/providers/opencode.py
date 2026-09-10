@@ -1,14 +1,37 @@
-"""OpenCode CLI provider running in sandbox isolation with session support."""
+"""OpenCode provider using the normally installed CLI."""
 import json
+import subprocess
+import tempfile
 import time
 import uuid
-from typing import Optional, Tuple
+from pathlib import Path
+from typing import Optional, Protocol, Tuple
+
 from .base import BaseProvider
-from ..sandbox import SandboxRunner
+
+
+class OpenCodeRunner(Protocol):
+    def run(self, task_config: dict, args: list[str], timeout_sec: int) -> tuple[int, str, str]: ...
+
+
+class LocalOpenCodeCLI:
+    """Invoke OpenCode normally while applying a task-local no-tools config."""
+
+    def run(self, task_config: dict, args: list[str], timeout_sec: int) -> tuple[int, str, str]:
+        with tempfile.TemporaryDirectory(prefix="bulk-lanes-opencode-") as temp_dir:
+            Path(temp_dir, "opencode.json").write_text(json.dumps(task_config, indent=2))
+            completed = subprocess.run(
+                ["opencode", *args],
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+            )
+        return completed.returncode, completed.stdout, completed.stderr
 
 class OpenCodeProvider(BaseProvider):
-    def __init__(self, sandbox: Optional[SandboxRunner] = None):
-        self.sandbox = sandbox or SandboxRunner()
+    def __init__(self, runner: OpenCodeRunner | None = None):
+        self.runner = runner or LocalOpenCodeCLI()
 
     def run_prompt(
         self,
@@ -35,7 +58,7 @@ class OpenCodeProvider(BaseProvider):
 
         full_prompt = (system_prompt + "\n\n" if system_prompt else "") + prompt
         
-        # Hardened opencode configuration: zero permissions, no tools, no MCP, no telemetry sharing
+        # Task-local OpenCode configuration: normal CLI auth, no model tools or MCP.
         task_config = {
             "$schema": "https://opencode.ai/config.json",
             "model": route_id,
@@ -45,12 +68,10 @@ class OpenCodeProvider(BaseProvider):
         }
 
         args = ["run", "--format", "json", "--model", route_id]
-        if session_id:
-            args += ["--session", session_id]
         args.append(full_prompt)
 
         try:
-            code, stdout, stderr = self.sandbox.run_opencode_task(
+            code, stdout, stderr = self.runner.run(
                 task_config=task_config,
                 args=args,
                 timeout_sec=timeout_sec
@@ -90,9 +111,10 @@ class OpenCodeProvider(BaseProvider):
                 receipt["duration_seconds"] = time.time() - started
                 return False, None, receipt
 
-            total_cost = sum(costs) if costs and all(isinstance(c, (int, float)) for c in costs) else 0.0
-            receipt["cost"] = total_cost
-            receipt["cost_status"] = "reported_zero" if total_cost == 0 else "billed"
+            if costs and all(isinstance(c, (int, float)) for c in costs):
+                total_cost = float(sum(costs))
+                receipt["cost"] = total_cost
+                receipt["cost_status"] = "reported_zero" if total_cost == 0 else "billed"
             receipt["status"] = "complete"
             receipt["duration_seconds"] = time.time() - started
             

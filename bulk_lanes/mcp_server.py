@@ -1,177 +1,210 @@
-"""Model Context Protocol (MCP) server for bulk-lanes.
-Allows any MCP-compatible agent harness (Cursor, Claude, OpenCode, Codex, Antigravity)
-to orchestrate bulk free-tier lanes directly as native tools.
-"""
-import json
-import sys
+"""Typed MCP tools with a workspace-confined file boundary."""
+from __future__ import annotations
+
+import os
+import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Annotated
+
+from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from .catalog import RouteCatalog
 from .engine import Engine
 from .export import export_clean_packet
-from .manifest import ManifestManager
-from .task import load_task
+from .input_data import load_input_items
+from .models import (
+    BatchTestResult,
+    CandidateModelOutput,
+    CleanPacket,
+    DoctorCheck,
+    DoctorReport,
+    InputItem,
+    ID_PATTERN,
+    ModelOutput,
+    RoutesResult,
+    SchemaResult,
+    TaskSpec,
+    TaskRegistrationResult,
+    TasksResult,
+    ValidationReport,
+)
+from .packer import pack_items
+from .store import BulkLanesStore, SCHEMA_SQL, SCHEMA_VERSION
+from .task import load_task_spec
 
-def run_mcp_server():
-    """Lightweight stdio JSON-RPC MCP server implementation."""
-    cat = RouteCatalog()
 
-    tools = [
-        {
-            "name": "bulk_lanes_routes",
-            "description": "List and optionally refresh available free-tier model routes across OpenCode and OpenRouter.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "refresh": {"type": "boolean", "description": "Scan provider schemas to discover new free models"},
-                    "free_only": {"type": "boolean", "default": True, "description": "Filter strictly for zero-cost routes"}
-                }
-            }
-        },
-        {
-            "name": "bulk_lanes_test",
-            "description": "Dry run a single batch of items against a task definition to verify prompt, schema, and mathematical quote grounding.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "task_path": {"type": "string", "description": "Path to task.py definition file"},
-                    "input_path": {"type": "string", "description": "Path to input sample file (.json or .jsonl)"}
-                },
-                "required": ["task_path", "input_path"]
-            }
-        },
-        {
-            "name": "bulk_lanes_run",
-            "description": "Launch a parallel bulk triage run across free model lanes and export a verified clean packet.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "task_path": {"type": "string", "description": "Path to task.py definition file"},
-                    "input_path": {"type": "string", "description": "Path to input data file (.json or .jsonl)"},
-                    "sessions": {"type": "integer", "default": 4, "description": "Number of concurrent worker sessions"},
-                    "output_dir": {"type": "string", "description": "Directory for run manifest and outputs"},
-                    "output_packet": {"type": "string", "description": "Output path for clean packet JSON"}
-                },
-                "required": ["task_path", "input_path"]
-            }
-        },
-        {
-            "name": "bulk_lanes_export",
-            "description": "Export verified records from a completed or in-progress run directory.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "run_dir": {"type": "string", "description": "Path to run directory containing manifest.json"},
-                    "output_path": {"type": "string", "description": "Output path for exported packet JSON"}
-                },
-                "required": ["run_dir"]
-            }
+class Workspace:
+    def __init__(self, root: str | Path):
+        self.root = Path(root).expanduser().resolve(strict=True)
+        if not self.root.is_dir():
+            raise ValueError("workspace root must be a directory")
+
+    def path(self, value: str, *, exists: bool = False) -> Path:
+        candidate = Path(value).expanduser()
+        resolved = (self.root / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+        if not resolved.is_relative_to(self.root):
+            raise ValueError(f"path escapes workspace root: {value}")
+        if exists and not resolved.exists():
+            raise FileNotFoundError(f"path not found: {value}")
+        return resolved
+
+
+def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = None) -> FastMCP:
+    workspace = Workspace(workspace_root)
+    resolved_db = workspace.path(str(db_path)) if db_path else workspace.path("bulk-lanes.db")
+    store = BulkLanesStore(resolved_db)
+
+    def resolve_task(reference: str) -> TaskSpec:
+        candidate = workspace.path(reference)
+        if candidate.is_file():
+            task = load_task_spec(candidate)
+            store.register_task(task)
+            return task
+        return store.get_task(reference)
+
+    server = FastMCP(
+        "bulk-lanes",
+        instructions="Execute typed, evidence-bound bulk tasks inside the configured workspace.",
+    )
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_routes(
+        refresh: Annotated[bool, Field(description="Refresh provider catalogues")] = False,
+        observed_zero_only: Annotated[bool, Field(description="Return only routes with observed zero pricing")] = True,
+    ) -> RoutesResult:
+        """List admitted routes; optionally append fresh provider price observations."""
+        catalog = RouteCatalog(db_path=store.path)
+        refresh_result = catalog.refresh_all() if refresh else None
+        routes = catalog.get_routes(free_only=observed_zero_only, include_disabled=not observed_zero_only)
+        return RoutesResult.model_validate({"routes": routes, "refresh": refresh_result})
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_register_task(task: TaskSpec) -> TaskRegistrationResult:
+        """Validate and register one immutable, declarative task revision."""
+        revision = store.register_task(task)
+        return TaskRegistrationResult(task=task.name, revision=revision)
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_tasks() -> TasksResult:
+        """List the current registered task names and their exact revision IDs."""
+        tasks = store.list_tasks()
+        return TasksResult(tasks=tasks, count=len(tasks))
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_test(
+        task: Annotated[str, Field(description="Registered task name or workspace-relative TaskSpec JSON")],
+        input_path: Annotated[str, Field(description="Workspace-relative JSON or JSONL input")],
+    ) -> BatchTestResult:
+        """Run one real inference batch and return only typed, source-grounded results."""
+        task_spec = resolve_task(task)
+        items = load_input_items(workspace.path(input_path, exists=True))
+        batches = pack_items(items[:task_spec.batch_size], task_spec.batch_size, task_spec.max_slice_chars)
+        if not batches:
+            raise ValueError("input contains no packable items")
+        ok, results, receipt, error = Engine(task=task_spec, store=store).execute_batch(batches[0])
+        return BatchTestResult.model_validate({
+            "ok": ok,
+            "results": results,
+            "receipt": receipt or None,
+            "error": error,
+        })
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_validate(
+        task: Annotated[str, Field(description="Registered task name or workspace-relative TaskSpec JSON")],
+        input_path: Annotated[str, Field(description="Workspace-relative JSON or JSONL input")],
+    ) -> ValidationReport:
+        """Validate a task and all input records offline without invoking a model."""
+        task_spec = resolve_task(task)
+        items = load_input_items(workspace.path(input_path, exists=True))
+        batches = pack_items(items, task_spec.batch_size, task_spec.max_slice_chars)
+        return ValidationReport(valid=True, task=task_spec.name, input_items=len(items), batches=len(batches))
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_run(
+        task: Annotated[str, Field(description="Registered task name or workspace-relative TaskSpec JSON")],
+        input_path: Annotated[str, Field(description="Workspace-relative JSON or JSONL input")],
+        run_id: Annotated[str, Field(description="Stable run identifier", pattern=ID_PATTERN, max_length=128)],
+        sessions: Annotated[int, Field(ge=1, le=64)] = 4,
+        max_attempts: Annotated[int, Field(ge=1, le=100_000)] = 300,
+        output_packet: Annotated[str | None, Field(description="Optional workspace-relative packet path")] = None,
+    ) -> CleanPacket:
+        """Create and execute a bounded, resumable SQLite-backed bulk campaign."""
+        task_spec = resolve_task(task)
+        input_file = workspace.path(input_path, exists=True)
+        items = load_input_items(input_file)
+        packet_path = workspace.path(output_packet) if output_packet else workspace.path(f"runs/{run_id}/clean_packet.json")
+        packet = Engine(task=task_spec, store=store).run_campaign(
+            raw_items=items,
+            run_id=run_id,
+            input_path=str(input_file),
+            concurrency=sessions,
+            max_attempts=max_attempts,
+            output_packet_path=packet_path,
+        )
+        return CleanPacket.model_validate(packet)
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_resume(
+        run_id: Annotated[str, Field(description="Existing SQLite run identifier")],
+        sessions: Annotated[int, Field(ge=1, le=64)] = 4,
+        output_packet: Annotated[str | None, Field(description="Optional workspace-relative packet path")] = None,
+    ) -> CleanPacket:
+        """Resume pending batches from an existing run without rereading source files."""
+        task_spec = store.get_run_task(run_id)
+        snapshot = store.run_snapshot(run_id)
+        packet_path = workspace.path(output_packet) if output_packet else workspace.path(snapshot["output_path"])
+        packet = Engine(task=task_spec, store=store).resume_campaign(run_id, sessions, packet_path)
+        return CleanPacket.model_validate(packet)
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_export(
+        run_id: Annotated[str, Field(description="Existing SQLite run identifier")],
+        output_path: Annotated[str | None, Field(description="Optional workspace-relative packet path")] = None,
+    ) -> CleanPacket:
+        """Export verified records and receipts as a self-validating typed packet."""
+        snapshot = store.run_snapshot(run_id)
+        destination = workspace.path(output_path) if output_path else workspace.path(snapshot["output_path"])
+        return CleanPacket.model_validate(export_clean_packet(snapshot, destination))
+
+    @server.tool(structured_output=True)
+    def bulk_lanes_schema(
+        kind: Annotated[str, Field(pattern="^(task|input|candidate-output|output|packet|database)$")],
+    ) -> SchemaResult:
+        """Return an admitted JSON Schema or the authoritative SQLite schema."""
+        models = {
+            "task": TaskSpec,
+            "input": InputItem,
+            "candidate-output": CandidateModelOutput,
+            "output": ModelOutput,
+            "packet": CleanPacket,
         }
-    ]
+        document = (
+            {"schema_version": SCHEMA_VERSION, "sql": SCHEMA_SQL}
+            if kind == "database"
+            else models[kind].model_json_schema(by_alias=True)
+        )
+        return SchemaResult(kind=kind, schema_document=document)
 
-    def handle_call_tool(name: str, arguments: dict) -> dict:
-        if name == "bulk_lanes_routes":
-            if arguments.get("refresh"):
-                cat.refresh_all()
-            routes = cat.get_routes(free_only=arguments.get("free_only", True))
-            return {"content": [{"type": "text", "text": json.dumps(routes, indent=2)}]}
+    @server.tool(structured_output=True)
+    def bulk_lanes_doctor() -> DoctorReport:
+        """Check workspace SQLite state, provider availability, and usable routes."""
+        catalog = RouteCatalog(db_path=store.path)
+        routes = catalog.get_routes(free_only=True)
+        opencode = shutil.which("opencode")
+        openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
+        checks = [
+            DoctorCheck(name="database", ok=store.schema_version() == "1", detail=f"SQLite schema {store.schema_version()}"),
+            DoctorCheck(name="opencode", ok=bool(opencode), detail=opencode or "opencode not found in PATH"),
+            DoctorCheck(name="openrouter", ok=openrouter, detail="configured" if openrouter else "optional key not configured"),
+            DoctorCheck(name="routes", ok=bool(routes), detail=f"{len(routes)} enabled observed-zero routes"),
+        ]
+        ready = checks[0].ok and checks[3].ok and (checks[1].ok or checks[2].ok)
+        return DoctorReport(ready=ready, database=str(store.path), checks=checks)
 
-        elif name == "bulk_lanes_test":
-            task = load_task(arguments["task_path"])
-            items = []
-            p = Path(arguments["input_path"])
-            if p.suffix == ".jsonl":
-                items = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
-            else:
-                data = json.loads(p.read_text())
-                items = data if isinstance(data, list) else data.get("items", [])
-            
-            engine = Engine(task=task)
-            from .packer import pack_items
-            batches = pack_items(items[:task.batch_size], batch_size=task.batch_size, max_slice_chars=task.max_slice_chars)
-            if not batches:
-                return {"isError": True, "content": [{"type": "text", "text": "No batches could be packed from input."}]}
-            
-            ok, results, receipt, err = engine.execute_batch(batches[0])
-            res_payload = {"ok": ok, "results": results, "receipt": receipt, "error": err}
-            return {"isError": not ok, "content": [{"type": "text", "text": json.dumps(res_payload, indent=2)}]}
+    return server
 
-        elif name == "bulk_lanes_run":
-            task = load_task(arguments["task_path"])
-            p = Path(arguments["input_path"])
-            items = [json.loads(l) for l in p.read_text().splitlines() if l.strip()] if p.suffix == ".jsonl" else json.loads(p.read_text())
-            if isinstance(items, dict) and "items" in items:
-                items = items["items"]
-            
-            run_dir = Path(arguments.get("output_dir") or f"runs/run_{task.name}")
-            out_packet = Path(arguments["output_packet"]) if arguments.get("output_packet") else None
-            engine = Engine(task=task)
-            packet = engine.run_campaign(
-                raw_items=items,
-                run_dir=run_dir,
-                concurrency=arguments.get("sessions", 4),
-                output_packet_path=out_packet
-            )
-            return {"content": [{"type": "text", "text": json.dumps(packet, indent=2)}]}
 
-        elif name == "bulk_lanes_export":
-            run_dir = Path(arguments["run_dir"])
-            manifest_path = run_dir / "manifest.json"
-            if not manifest_path.exists():
-                return {"isError": True, "content": [{"type": "text", "text": f"Manifest not found in {run_dir}"}]}
-            manifest_data = json.loads(manifest_path.read_text())
-            out_path = Path(arguments.get("output_path") or (run_dir / "clean_packet.json"))
-            packet = export_clean_packet(manifest_data, out_path)
-            return {"content": [{"type": "text", "text": json.dumps(packet, indent=2)}]}
-
-        return {"isError": True, "content": [{"type": "text", "text": f"Unknown tool: {name}"}]}
-
-    # Standard JSON-RPC 2.0 loop over stdin/stdout
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            req = json.loads(line)
-        except Exception:
-            continue
-
-        msg_id = req.get("id")
-        method = req.get("method")
-        params = req.get("params", {})
-
-        if method == "initialize":
-            resp = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "bulk-lanes", "version": "0.1.0"}
-                }
-            }
-        elif method == "tools/list":
-            resp = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {"tools": tools}
-            }
-        elif method == "tools/call":
-            tool_name = params.get("name")
-            tool_args = params.get("arguments", {})
-            call_res = handle_call_tool(tool_name, tool_args)
-            resp = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": call_res
-            }
-        else:
-            resp = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {}
-            }
-
-        sys.stdout.write(json.dumps(resp) + "\n")
-        sys.stdout.flush()
+def run_mcp_server(workspace_root: str | Path = ".", db_path: str | Path | None = None) -> None:
+    create_mcp_server(workspace_root, db_path).run(transport="stdio")

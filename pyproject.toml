@@ -1,24 +1,40 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "bulk-lanes"
-version = "0.1.0"
-description = "Universal air-gapped bulk model lane orchestrator for any harness (OpenCode + OpenRouter)."
+version = "0.2.0"
+description = "Typed bulk evidence processing with exact source-offset verification."
 readme = "README.md"
-license = { text = "MIT" }
-authors = [{ name = "bulk-lanes contributors" }]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "NatesVibeCode" }]
 requires-python = ">=3.10"
+keywords = ["mcp", "agent-skills", "sqlite", "structured-output", "evidence-grounding"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
 dependencies = [
     "pydantic>=2.0.0",
+    "jsonschema>=4.20.0",
     "httpx>=0.24.0",
+    "mcp>=1.26.0,<2",
 ]
 
 [project.urls]
-Homepage = "https://github.com/bulk-lanes/bulk-lanes"
-Repository = "https://github.com/bulk-lanes/bulk-lanes"
-Issues = "https://github.com/bulk-lanes/bulk-lanes/issues"
+Homepage = "https://github.com/NatesVibeCode/bulk-lanes"
+Repository = "https://github.com/NatesVibeCode/bulk-lanes"
+Issues = "https://github.com/NatesVibeCode/bulk-lanes/issues"
+Security = "https://github.com/NatesVibeCode/bulk-lanes/security/policy"
 
 [project.optional-dependencies]
 dev = [
@@ -30,6 +46,18 @@ bulk-lanes = "bulk_lanes.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["bulk_lanes*"]
+
+[tool.setuptools.package-data]
+bulk_lanes = [
+    "migrations/*.sql",
+    "data/*.json",
+    "resources/skill/*.md",
+    "resources/skill/references/*.md",
+    "resources/skill/agents/*.yaml",
+]
+
+[tool.setuptools.data-files]
+"share/bulk-lanes/schemas" = ["schemas/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

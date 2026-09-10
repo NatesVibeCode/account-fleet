@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "CandidateExtractedItem": {
+      "additionalProperties": false,
+      "properties": {
+        "item_id": {
+          "minLength": 1,
+          "title": "Item Id",
+          "type": "string"
+        },
+        "claims": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Claims",
+          "type": "object"
+        },
+        "quotes": {
+          "items": {
+            "$ref": "#/$defs/QuoteCandidate"
+          },
+          "minItems": 1,
+          "title": "Quotes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "item_id",
+        "claims",
+        "quotes"
+      ],
+      "title": "CandidateExtractedItem",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "QuoteCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "slice_id": {
+          "minLength": 1,
+          "title": "Slice Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        }
+      },
+      "required": [
+        "slice_id",
+        "text"
+      ],
+      "title": "QuoteCandidate",
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/candidate-output-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/CandidateExtractedItem"
+      },
+      "title": "Items",
+      "type": "array"
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "title": "CandidateModelOutput",
+  "type": "object"
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+  "format_version": "bulk_lanes_task_v1",
+  "name": "saas_intelligence",
+  "instructions": "Extract product pricing, API support, SDKs, and value proposition from the supplied source spans.",
+  "batch_size": 4,
+  "max_slice_chars": 6000,
+  "min_quote_chars": 15,
+  "claims_schema": {
+    "type": "object",
+    "properties": {
+      "pricing_type": {"enum": ["free_tier", "usage_based", "enterprise_only", "unknown"]},
+      "has_api": {"type": "boolean"},
+      "supported_sdks": {"type": "array", "items": {"type": "string"}},
+      "core_value_prop": {"type": "string"}
+    },
+    "required": ["pricing_type", "has_api", "supported_sdks", "core_value_prop"],
+    "additionalProperties": false
+  }
+}

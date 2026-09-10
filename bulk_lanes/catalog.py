@@ -4,62 +4,118 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import httpx
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "routes.json"
+from .models import RouteInfo
+from .store import BulkLanesStore
+
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "data" / "routes.seed.json"
 
 class RouteCircuitBreaker(Exception):
     pass
 
-def is_free_in_schema(model_data: dict) -> bool:
-    """Detects if a model qualifies as free by checking if 'free' appears in its schema or if cost is 0."""
-    # 1. Direct pricing check if available
-    pricing = model_data.get("pricing") or model_data.get("cost") or {}
-    try:
-        p_in = float(pricing.get("prompt") or pricing.get("input") or 0)
-        p_out = float(pricing.get("completion") or pricing.get("output") or 0)
-        cache_read = float(pricing.get("cache", {}).get("read") or 0)
-        cache_write = float(pricing.get("cache", {}).get("write") or 0)
-        if p_in == 0 and p_out == 0 and cache_read == 0 and cache_write == 0 and ("pricing" in model_data or "cost" in model_data):
-            return True
-    except (ValueError, TypeError):
-        pass
+class PriceState(str, Enum):
+    CANDIDATE = "candidate"
+    PRICE_OBSERVED_ZERO = "price_observed_zero"
+    UNKNOWN = "unknown"
+    DISABLED = "disabled"
 
-    # 2. Check if the word "free" appears in the model schema (id, name, description, tags, pricing strings)
+
+def _observed_prices(model_data: dict) -> list[float] | None:
+    pricing = model_data.get("pricing") or model_data.get("cost")
+    if isinstance(pricing, dict):
+        input_value = pricing.get("prompt", pricing.get("input"))
+        output_value = pricing.get("completion", pricing.get("output"))
+        if input_value is None or output_value is None:
+            return None
+        raw_values: list[Any] = []
+
+        def collect(value: Any) -> None:
+            if isinstance(value, dict):
+                for nested in value.values():
+                    collect(nested)
+            elif value is not None:
+                raw_values.append(value)
+
+        collect(pricing)
+        try:
+            return [float(value) for value in raw_values]
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def classify_price_state(model_data: dict) -> PriceState:
+    """Classify evidence without treating marketing text as observed pricing."""
+    prices = _observed_prices(model_data)
+    if prices is not None:
+        return PriceState.PRICE_OBSERVED_ZERO if all(value == 0 for value in prices) else PriceState.UNKNOWN
     schema_dump = json.dumps(model_data).lower()
     if re.search(r"(\bfree\b|:free|-free|_free)", schema_dump):
-        return True
+        return PriceState.CANDIDATE
+    return PriceState.UNKNOWN
 
-    return False
+
+def is_free_in_schema(model_data: dict) -> bool:
+    """Compatibility predicate: true only for explicit observed zero pricing."""
+    return classify_price_state(model_data) is PriceState.PRICE_OBSERVED_ZERO
 
 class RouteCatalog:
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Optional[Path] = None, db_path: Optional[Path] = None):
         self.config_path = config_path or DEFAULT_CONFIG_PATH
+        self._lock = threading.RLock()
+        resolved_db = db_path or (self.config_path.with_suffix(".db") if config_path else None)
+        self.store = BulkLanesStore(resolved_db)
+        if self.store.route_count() == 0:
+            self._seed_from_json()
         self.data = self._load()
 
-    def _load(self) -> dict:
+    def _seed_from_json(self) -> None:
+        """Import packaged route hints without treating bundled history as local evidence."""
         if not self.config_path.exists():
-            return {"revision": 1, "routes": []}
-        return json.loads(self.config_path.read_text())
+            return
+        data = json.loads(self.config_path.read_text())
+        for raw_route in data.get("routes", []):
+            route = dict(raw_route)
+            hinted_zero = (
+                route.get("price_state") == PriceState.PRICE_OBSERVED_ZERO.value
+                or (route.get("cost_per_1k_input") == 0 and route.get("cost_per_1k_output") == 0)
+            )
+            route["enabled"] = False
+            route["price_state"] = PriceState.CANDIDATE.value if hinted_zero else PriceState.UNKNOWN.value
+            route["last_verified"] = None
+            route["verification_source"] = "packaged route hint; refresh required"
+            route.pop("zero_price_verified", None)
+            self.store.upsert_route(RouteInfo.model_validate(route))
+
+    def _load(self) -> dict:
+        routes = self.store.list_routes(observed_zero_only=False, include_disabled=True)
+        return {"revision": 2, "routes": [route.model_dump(mode="json") for route in routes]}
 
     def save(self):
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.config_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.data, indent=2))
-        tmp.replace(self.config_path)
+        with self._lock:
+            for raw_route in self.data.get("routes", []):
+                self.store.upsert_route(RouteInfo.model_validate(raw_route))
 
-    def get_routes(self, provider: Optional[str] = None, free_only: bool = True) -> List[dict]:
+    def get_routes(
+        self,
+        provider: Optional[str] = None,
+        free_only: bool = True,
+        include_disabled: bool = False,
+    ) -> List[dict]:
         routes = self.data.get("routes", [])
         matched = []
         for r in routes:
-            if not r.get("enabled", False):
+            if not include_disabled and not r.get("enabled", False):
                 continue
             if provider and r.get("provider") != provider:
                 continue
-            if free_only and not r.get("zero_price_verified", False):
+            if free_only and r.get("price_state") != PriceState.PRICE_OBSERVED_ZERO.value:
                 continue
             matched.append(r)
         return matched
@@ -77,28 +133,29 @@ class RouteCatalog:
         return ids[start:] + ids[:start]
 
     def record_cost(self, route_id: str, reported_cost: Optional[float]):
-        """Trip circuit breaker and disable route if non-zero cost is reported on a zero-price route."""
-        if reported_cost is not None and reported_cost > 0:
-            for r in self.data.get("routes", []):
-                if r["id"] == route_id and r.get("zero_price_verified"):
-                    r["enabled"] = False
-                    r["disabled_reason"] = f"Circuit breaker tripped: reported cost {reported_cost} > 0 on free route."
-                    r["disabled_at"] = time.time()
-                    self.save()
-                    raise RouteCircuitBreaker(f"Non-zero cost {reported_cost} reported on {route_id}! Route disabled.")
-
-    def mark_verified(self, route_id: str, zero_price: bool = True, source: str = "smoke_test"):
-        for r in self.data.get("routes", []):
-            if r["id"] == route_id:
-                r["enabled"] = True
-                r["zero_price_verified"] = zero_price
-                r["last_verified"] = time.strftime("%Y-%m-%d")
-                r["verification_source"] = source
-                self.save()
-                return
+        """Update state from provider-reported cost and stop any route that bills."""
+        with self._lock:
+            if reported_cost == 0:
+                for route in self.data.get("routes", []):
+                    if route["id"] == route_id:
+                        if route.get("price_state") == PriceState.DISABLED.value:
+                            return
+                        route["price_state"] = PriceState.PRICE_OBSERVED_ZERO.value
+                        route["last_price_observation"] = time.time()
+                        self.save()
+                        return
+            if reported_cost is not None and reported_cost > 0:
+                for route in self.data.get("routes", []):
+                    if route["id"] == route_id:
+                        route["enabled"] = False
+                        route["price_state"] = PriceState.DISABLED.value
+                        route["disabled_reason"] = f"Circuit breaker tripped: reported cost {reported_cost} > 0 on free route."
+                        route["disabled_at"] = time.time()
+                        self.save()
+                        raise RouteCircuitBreaker(f"Non-zero cost {reported_cost} reported on {route_id}! Route disabled.")
 
     def refresh_from_opencode(self) -> int:
-        """Queries OpenCode CLI catalogue, scans for 'free' in schema, and registers matching routes."""
+        """Query OpenCode and record candidates separately from observed zero prices."""
         if not shutil.which("opencode"):
             raise RuntimeError("opencode CLI not found in PATH")
 
@@ -133,33 +190,33 @@ class RouteCatalog:
         discovered_count = 0
 
         for model_id, model_data in models.items():
-            is_free = is_free_in_schema(model_data)
+            price_state = classify_price_state(model_data)
             is_active = model_data.get("status") == "active"
 
             if model_id in known:
                 r = known[model_id]
-                r["zero_price_verified"] = is_free
-                r["enabled"] = is_free and is_active
+                r["price_state"] = price_state.value
+                r["enabled"] = price_state is PriceState.PRICE_OBSERVED_ZERO and is_active
                 r["last_verified"] = time.strftime("%Y-%m-%d")
-                r["verification_source"] = "opencode models opencode --verbose (schema scan)"
-            elif is_free and is_active:
+                r["verification_source"] = "opencode models opencode --verbose"
+            elif price_state in {PriceState.CANDIDATE, PriceState.PRICE_OBSERVED_ZERO} and is_active:
                 self.data["routes"].append({
                     "id": model_id,
                     "provider": "opencode",
-                    "enabled": True,
-                    "zero_price_verified": True,
+                    "enabled": price_state is PriceState.PRICE_OBSERVED_ZERO,
+                    "price_state": price_state.value,
                     "auth": "hosted-free",
                     "last_verified": time.strftime("%Y-%m-%d"),
-                    "verification_source": "opencode models opencode --verbose (schema scan)"
+                    "verification_source": "opencode models opencode --verbose"
                 })
-            if is_free:
+            if price_state in {PriceState.CANDIDATE, PriceState.PRICE_OBSERVED_ZERO}:
                 discovered_count += 1
 
         self.save()
         return discovered_count
 
     def refresh_from_openrouter(self) -> int:
-        """Queries OpenRouter API, scans all models for 'free' in schema/pricing, and registers them."""
+        """Query OpenRouter and distinguish explicit zero pricing from name candidates."""
         try:
             with httpx.Client(timeout=15) as client:
                 resp = client.get("https://openrouter.ai/api/v1/models")
@@ -173,35 +230,46 @@ class RouteCatalog:
         discovered_count = 0
 
         for m in data:
-            if is_free_in_schema(m):
+            price_state = classify_price_state(m)
+            if price_state in {PriceState.CANDIDATE, PriceState.PRICE_OBSERVED_ZERO}:
                 raw_id = m.get("id", "")
                 route_id = f"openrouter/{raw_id}" if not raw_id.startswith("openrouter/") else raw_id
                 
                 if route_id in known:
                     r = known[route_id]
-                    r["zero_price_verified"] = True
-                    r["enabled"] = True
+                    r["price_state"] = price_state.value
+                    r["enabled"] = price_state is PriceState.PRICE_OBSERVED_ZERO
+                    pricing = m.get("pricing", {})
+                    if price_state is PriceState.PRICE_OBSERVED_ZERO:
+                        r["cost_per_1k_input"] = float(pricing.get("prompt", pricing.get("input", 0))) * 1000
+                        r["cost_per_1k_output"] = float(pricing.get("completion", pricing.get("output", 0))) * 1000
+                    else:
+                        r.pop("cost_per_1k_input", None)
+                        r.pop("cost_per_1k_output", None)
                     r["last_verified"] = time.strftime("%Y-%m-%d")
-                    r["verification_source"] = "openrouter /api/v1/models (schema scan)"
+                    r["verification_source"] = "openrouter /api/v1/models pricing"
                 else:
-                    self.data["routes"].append({
+                    route = {
                         "id": route_id,
                         "provider": "openrouter",
-                        "enabled": True,
-                        "zero_price_verified": True,
+                        "enabled": price_state is PriceState.PRICE_OBSERVED_ZERO,
+                        "price_state": price_state.value,
                         "auth": "api-key",
-                        "cost_per_1k_input": 0.0,
-                        "cost_per_1k_output": 0.0,
                         "last_verified": time.strftime("%Y-%m-%d"),
-                        "verification_source": "openrouter /api/v1/models (schema scan)"
-                    })
+                        "verification_source": "openrouter /api/v1/models pricing"
+                    }
+                    if price_state is PriceState.PRICE_OBSERVED_ZERO:
+                        pricing = m["pricing"]
+                        route["cost_per_1k_input"] = float(pricing.get("prompt", pricing.get("input", 0))) * 1000
+                        route["cost_per_1k_output"] = float(pricing.get("completion", pricing.get("output", 0))) * 1000
+                    self.data["routes"].append(route)
                 discovered_count += 1
 
         self.save()
         return discovered_count
 
     def refresh_all(self) -> Dict[str, int]:
-        """Scans all providers for free models automatically."""
+        """Refresh observed-zero routes and unverified candidates."""
         results = {}
         try:
             results["opencode"] = self.refresh_from_opencode()

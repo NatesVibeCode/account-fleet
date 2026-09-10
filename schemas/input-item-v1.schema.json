@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "$id": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/input-item-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "const": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/input-item-v1.schema.json",
+      "default": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/input-item-v1.schema.json",
+      "title": "$Schema",
+      "type": "string"
+    },
+    "item_id": {
+      "description": "Stable input identity",
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "title": "Item Id",
+      "type": "string"
+    },
+    "text": {
+      "description": "Complete source text used for evidence verification",
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    },
+    "title": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional source label",
+      "title": "Title"
+    },
+    "source_uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional source locator retained in output",
+      "title": "Source Uri"
+    },
+    "content_type": {
+      "default": "text/plain",
+      "description": "Media type describing text serialization",
+      "pattern": "^[a-z0-9.+-]+/[a-z0-9.+-]+$",
+      "title": "Content Type",
+      "type": "string"
+    },
+    "metadata": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "description": "Source metadata retained with the item",
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "item_id",
+    "text"
+  ],
+  "title": "InputItem",
+  "type": "object"
+}

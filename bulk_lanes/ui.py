@@ -18,17 +18,18 @@ def banner():
  |___/ \_,_||_|_\_\  |____\__,_|_||_\___/__/ 
 """
     print(f"{CYAN}{BOLD}{art}{RESET}")
-    print(f" {DIM}Air-Gapped Bulk Model Lane Orchestrator (OpenCode + OpenRouter){RESET}\n")
+    print(f" {DIM}Typed Bulk Extraction (OpenCode + OpenRouter){RESET}\n")
 
 def print_routes_table(routes: list):
-    print(f"{BOLD}{'ROUTE ID':<45} {'PROVIDER':<12} {'ZERO-PRICE':<12} {'STATUS'}{RESET}")
+    print(f"{BOLD}{'ROUTE ID':<45} {'PROVIDER':<12} {'PRICE STATE':<22} {'STATUS'}{RESET}")
     print("-" * 80)
     for r in routes:
         rid = r["id"]
         prov = r.get("provider", "unknown")
-        zp = f"{GREEN}Yes ($0.00){RESET}" if r.get("zero_price_verified") else f"{YELLOW}Billable{RESET}"
+        price_state = r.get("price_state", "unknown")
+        price = f"{GREEN}{price_state}{RESET}" if price_state == "price_observed_zero" else f"{YELLOW}{price_state}{RESET}"
         status = f"{GREEN}Active{RESET}" if r.get("enabled") else f"{RED}Disabled{RESET}"
-        print(f"{rid:<45} {prov:<12} {zp:<21} {status}")
+        print(f"{rid:<45} {prov:<12} {price:<31} {status}")
     print()
 
 def print_progress(current: int, total: int, prefix: str = "", suffix: str = ""):

@@ -1,214 +1,169 @@
 # bulk-lanes
 
-[![CI](https://github.com/bulk-lanes/bulk-lanes/actions/workflows/ci.yml/badge.svg)](https://github.com/bulk-lanes/bulk-lanes/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/NatesVibeCode/bulk-lanes/actions/workflows/ci.yml/badge.svg)](https://github.com/NatesVibeCode/bulk-lanes/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-**Universal, air-gapped bulk model lane orchestrator (OpenCode + OpenRouter) with mathematical quote-grounding and automatic free-tier schema discovery.**
+Run evidence-bound bulk classification, extraction, summarization, and triage through an installed model provider.
 
-`bulk-lanes` solves a common problem in agentic and LLM architectures:
-> **"You have thousands of untrusted documents (scraped web pages, vulnerability notices, papers, customer logs, code diffs). You want to process them in parallel without burning expensive frontier model credits or granting untrusted public text tool access near your private host, and you want mathematical proof that facts aren't hallucinated before ingesting them into your trusted systems."**
+SQLite is the control plane. JSON and JSONL are typed import/export formats.
 
----
+One task shape covers many jobs: `instructions` states the outcome, while a closed `claims_schema` defines the exact returned fields. Presets handle common work; a TaskSpec JSON handles domain-specific fields without adding code or accepting arbitrary output.
 
-## Key Features
-
-- **Dynamic Free-in-Schema Auto-Discovery**: Automatically inspects provider model schemas (OpenCode CLI, OpenRouter API) and admits any model where `"free"` appears in its schema/ID or where pricing is zero.
-- **Universal Harness Compatibility**:
-  - **Human CLI**: Polished terminal UI with live progress indicators and ANSI tables.
-  - **Machine-Readable JSON Mode (`--json`)**: Pure JSON output on stdout for AI coding harnesses (Claude Code, Codex, Aider, script pipelines).
-  - **Model Context Protocol (MCP) Server (`bulk-lanes serve`)**: Drop-in native tools for Cursor, Claude Desktop, Windsurf, OpenCode, and Antigravity.
-  - **Universal Agent Skill (`SKILL.md`)**: Conforms to the standard Agent Skill spec in `.agents/skills/bulk-lanes/SKILL.md`.
-  - **Python SDK (`import bulk_lanes`)**: Native Python library for downstream applications.
-- **Parallel Multi-Session Orchestration**: Dispatches work across $N$ dedicated concurrent worker sessions (`--sessions N`).
-- **Mathematical Quote Grounding**: Every extracted claim must cite an exact verbatim substring ($\ge 15$ chars) from the source document. Hallucinations or prompt injections that fabricate quotes are rejected.
-- **Zero-Trust Sandboxing**: OpenCode tasks execute with all agent tools denied (`permission: {'*': 'deny'}`), read-only task mounts, and isolated tmpfs environments.
-- **Resumable State & Budget Reservation**: Atomic manifests (`manifest.json`) pre-allocate attempt budgets so interrupted runs never loop or double-spend on restart.
-- **Air-Gapped Clean Packets**: Exports typed, validated JSON packets with complete audit receipts (tokens, cost status, verification proofs) for safe ingestion into your private databases or internal agents.
-
----
-
-## Architecture Overview
-
-```
-                          [ UNTRUSTED FLEET ZONE ]
-                (Public Data & Auto-Discovered Free Models)
-┌──────────────────────┐
-│ Raw Inputs (.jsonl)  │
-└──────────┬───────────┘
-           │
-           ▼
-┌────────────────────────────────────────────────────────┐
-│ bulk-lanes Engine                                      │
-│  ├── Document Slicer     (Offset & slice tracking)     │
-│  ├── Batch Packer        (Multi-item prompt packing)   │
-│  └── Multi-Session Pool  (Parallel concurrent workers) │
-└──────────┬─────────────────────────────────────────────┘
-           │
-           ├───► [Lane 1: OpenCode Container Pool]  (Nemotron, Mimo, Big-Pickle, Muse Spark)
-           └───► [Lane 2: OpenRouter Pool]          (Free tier & budget routes - throttled)
-           │
-           ▼
-┌────────────────────────────────────────────────────────┐
-│ Grounded Verification Gate                             │
-│  ├── Schema Validation (Type / structure checks)       │
-│  ├── Verbatim Quote Matcher (Exact substring in slice) │
-│  └── Circuit Breaker (Disables broken/paid routes)     │
-└──────────┬─────────────────────────────────────────────┘
-           │
-═══════════╪══════════════════════════════════════════════ [ AIR GAP BOUNDARY ]
-           ▼
-┌──────────────────────┐
-│ Clean Packet JSON    │ (Sanitized, Verified Artifact)
-└──────────┬───────────┘
-           │
-           ▼               [ TRUSTED CORE ZONE ]
-┌────────────────────────────────────────────────────────┐
-│ Your Private Systems                                   │
-│ (Internal DB, Private Agent, Vector RAG, CRM, Analytics│
-└────────────────────────────────────────────────────────┘
-```
-
----
-
-## Installation
+## Fresh system
 
 ```bash
-git clone https://github.com/your-org/bulk-lanes.git
-cd bulk-lanes
-pip install -e .
+git clone https://github.com/NatesVibeCode/bulk-lanes.git
+python3 -m pip install ./bulk-lanes
+
+mkdir my-bulk-workspace && cd my-bulk-workspace
+bulk-lanes setup --workspace-root "$PWD" --refresh-routes
+bulk-lanes init product-triage --preset classify
+bulk-lanes validate product-triage --input product-triage.sample.jsonl
+bulk-lanes test product-triage --input product-triage.sample.jsonl
+bulk-lanes run product-triage --input product-triage.sample.jsonl --run-id first-run
 ```
 
----
+The default project skill location is `.agents/skills/bulk-lanes`. Use `--scope user` for `~/.agents/skills`, or `--skill-root PATH` only when a harness documents a different discovery root.
 
-## Universal Harness Usage
+`setup` is idempotent. It installs the standard skill bundled in the Python package, initializes the workspace database, and returns typed stdio MCP configuration plus exact next commands. It never overwrites different content unless `--force` is explicit. The CLI and MCP server work even when a harness does not support skills.
 
-### 1. Interactive CLI (Human / Terminal)
+Resume without rebuilding the task or input:
+
 ```bash
-# Discover all free models across providers
-bulk-lanes routes --refresh
-
-# Scaffold a new task template
-bulk-lanes init my_task
-cd my_task
-
-# Dry run 1 batch to test schema and quote-grounding
-bulk-lanes test --task task.py --input sample_input.jsonl
-
-# Run parallel worker sessions in bulk
-bulk-lanes run \
-  --task task.py \
-  --input sample_input.jsonl \
-  --sessions 8 \
-  --output-dir ./runs/sweep_01 \
-  --output clean_packet.json
-
-# Inspect worker sessions
-bulk-lanes sessions ./runs/sweep_01
-
-# Resume if interrupted
-bulk-lanes resume ./runs/sweep_01 --task task.py --input sample_input.jsonl
+bulk-lanes resume first-run
+bulk-lanes export first-run
 ```
 
-### 2. Machine-Readable JSON Mode (For Agent Harnesses & Scripts)
-Pass `--json` to any command to receive raw JSON on stdout without ANSI formatting:
+The default database is `./bulk-lanes.db`. Select another with `--db` or `BULK_LANES_DB`. During setup, the database must remain below the selected workspace root so the same path is valid through MCP.
+
+## What SQLite owns
+
+- immutable task revisions and the selected current revision;
+- current routes plus append-only price observations;
+- runs, typed batch payloads, atomic worker leases, and attempt ceilings;
+- append-only batch attempts, verified results, and model receipts with explicit current-result selection;
+- worker-session summaries and export state.
+
+The queue uses WAL mode, foreign keys, a busy timeout, and `BEGIN IMMEDIATE` leasing. Two workers cannot claim the same batch.
+
+Inspect the exact schema:
+
 ```bash
-bulk-lanes routes --json
-bulk-lanes test --task task.py --input sample.jsonl --json
-bulk-lanes run --task task.py --input data.jsonl --sessions 4 --json
+bulk-lanes schema database
 ```
 
-### 3. Model Context Protocol (MCP) Server
-Launch `bulk-lanes serve` to expose standard JSON-RPC tools (`bulk_lanes_routes`, `bulk_lanes_test`, `bulk_lanes_run`, `bulk_lanes_export`) over stdio.
+## Standard input
 
-Add to your `cursor.json`, `claude_desktop_config.json`, or MCP configuration:
+Every JSON or JSONL record uses one closed shape:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/input-item-v1.schema.json",
+  "item_id": "item_1",
+  "text": "Source text to process",
+  "title": "Optional title",
+  "source_uri": "https://example.com/source",
+  "content_type": "text/plain",
+  "metadata": {}
+}
+```
+
+Only `item_id` and `text` are required. Unknown fields, duplicate IDs, blank text, and malformed JSONL fail validation.
+
+## Typed task fields
+
+`init` includes four focused presets:
+
+```bash
+bulk-lanes init labels --preset classify
+bulk-lanes init facts --preset extract
+bulk-lanes init queue --preset triage
+bulk-lanes init summaries --preset summarize
+```
+
+Task-specific fields live inside a closed JSON Schema. The stable record envelope is always:
+
+```json
+{
+  "item_id": "item_1",
+  "source_uri": "https://example.com/source",
+  "source_digest": "sha256...",
+  "content_type": "text/plain",
+  "claims": {},
+  "quotes": [{"slice_id": "full", "start": 0, "end": 11, "text": "exact quote"}]
+}
+```
+
+Models only need to return `slice_id` and exact quote `text`. The verifier computes offsets when the quote occurs once. Repeated text requires explicit offsets. Stored and exported records always contain canonical offsets.
+
+Print the admitted schemas:
+
+```bash
+bulk-lanes schema task
+bulk-lanes schema input
+bulk-lanes schema candidate-output
+bulk-lanes schema output
+bulk-lanes schema packet
+```
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `setup` | Install the bundled skill and initialize a fresh harness workspace |
+| `doctor` | Check SQLite, installed CLIs, optional OpenRouter auth, and usable routes |
+| `routes` | List routes; `--refresh` contacts providers and records observations |
+| `tasks` | List current registered tasks |
+| `init` | Register a task from a preset and create one sample input |
+| `validate` | Check task and input without inference |
+| `test` | Exercise one real model batch |
+| `run` | Create and execute a bounded SQLite-backed run |
+| `resume` | Continue the stored queue by run ID |
+| `sessions` | Inspect recorded worker summaries |
+| `export` | Produce a validated `bulk_lanes_v2` packet |
+| `schema` | Print a JSON or SQLite contract |
+| `serve` | Start the typed MCP server |
+
+Add `--json` for stable machine output.
+
+Each packet embeds the exact closed `TaskSpec` and binds it to `task_revision`. Loading or exporting the packet revalidates every record's `claims` against that task, along with the run ID, input SHA-256 digest, canonical evidence, admitted receipts, and audit counts.
+
+## Normal CLI execution
+
+OpenCode runs through the installed `opencode` command and uses its normal authentication. A temporary task-local config denies model tool permissions, defines no task MCP servers, and disables sharing.
+
+OpenRouter is optional. Costs are taken only from provider data or receipts; a route name containing `free` is only a candidate. Packaged route data is imported disabled as discovery hints. A fresh provider observation is required before any route enters the zero-price ladder.
+
+## Data and provider boundary
+
+`test`, `run`, and `resume` send the selected source slices and task instructions to the chosen model provider. Do not process private, regulated, licensed, or customer data unless that provider and account are approved for it.
+
+The software is MIT-licensed and free to use. Model providers are separate services with their own accounts, terms, rate limits, availability, and pricing. An observed-zero route is evidence about the reported price at one time; it is not a promise that a provider will remain free.
+
+## MCP
+
 ```json
 {
   "mcpServers": {
     "bulk-lanes": {
       "command": "bulk-lanes",
-      "args": ["serve"]
+      "args": ["serve", "--workspace-root", "/absolute/workspace"]
     }
   }
 }
 ```
 
-### 4. Universal Agent Skill
-The repository includes a ready-to-use Agent Skill specification:
-- `.agents/skills/bulk-lanes/SKILL.md` (universal agent standard)
-- `skills/bulk-lanes/SKILL.md`
+The MCP database defaults to `<workspace>/bulk-lanes.db`. All MCP-controlled task, input, database, and packet paths must stay below the workspace root.
 
-Any modern agent harness will automatically discover this skill when the repository is cloned into a project or workspace.
-
-### 5. Python SDK (Downstream Ingestion)
-```python
-from bulk_lanes import read_packet
-
-# Read verified, air-gapped packet
-packet = read_packet("clean_packet.json")
-
-print(f"Verified records: {packet['total_verified_records']}")
-print(f"Total tokens used: {packet['audit']['total_tokens_consumed']}")
-print(f"Reported cost: ${packet['audit']['total_cost_reported']}")
-
-for record in packet["records"]:
-    # Safe to ingest: verified by schema and mathematically grounded by exact source quotes
-    internal_db.upsert(
-        id=record["item_id"],
-        facts=record,
-        citations=record["quotes"]
-    )
-```
-
----
-
-## Defining Custom Tasks
-
-Tasks are defined as clean Python classes:
-
-```python
-from bulk_lanes import Task
-
-class MyExtractionTask(Task):
-    name = "saas_triage"
-    batch_size = 6                  # Pack 6 items per model call
-    min_quote_chars = 15            # Minimum character length for valid quote
-    quote_field = "evidence_quotes" # Key model must populate
-
-    system_prompt = (
-        "You are an air-gapped triage worker. "
-        "Extract structured capabilities from the provided text. "
-        "Every claim MUST be backed by a verbatim quote from the text."
-    )
-
-    user_prompt_template = """
-Extract information for each item:
-{
-  "items": [
-    {
-      "item_id": "<id>",
-      "summary": "<one sentence>",
-      "has_api": true | false,
-      "evidence_quotes": ["<verbatim quote from text>"]
-    }
-  ]
-}
-
-Items:
-{items_json}
-"""
-```
-
----
-
-## Running Tests
+## Verify
 
 ```bash
-pytest -v
+pytest -q
 ```
 
----
+The wheel contains the SQLite migration, five public JSON Schemas, and the complete companion skill. A source checkout is needed only to develop or run the tests.
 
 ## License
 
-MIT © [bulk-lanes contributors](LICENSE)
+MIT. See [LICENSE](LICENSE). Report security issues through the repository's [private vulnerability reporting](https://github.com/NatesVibeCode/bulk-lanes/security/advisories/new), not a public issue.

@@ -1,0 +1,65 @@
+import json
+import subprocess
+import sys
+
+import pytest
+
+from bulk_lanes.mcp_server import Workspace
+
+
+def test_workspace_rejects_escape(tmp_path):
+    workspace = Workspace(tmp_path)
+    with pytest.raises(ValueError, match="escapes workspace"):
+        workspace.path("../outside.json")
+
+
+def test_mcp_tool_error_does_not_kill_server(tmp_path):
+    messages = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "pytest", "version": "1"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "bulk_lanes_test",
+                "arguments": {"task": "missing", "input_path": "missing.jsonl"},
+            },
+        },
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {}},
+    ]
+    process = subprocess.Popen(
+        [sys.executable, "-m", "bulk_lanes.cli", "serve", "--workspace-root", str(tmp_path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdin is not None
+    assert process.stdout is not None
+    responses = []
+    for message in messages:
+        process.stdin.write(json.dumps(message) + "\n")
+        process.stdin.flush()
+        if "id" in message:
+            responses.append(json.loads(process.stdout.readline()))
+    process.stdin.close()
+    exit_code = process.wait(timeout=10)
+
+    assert exit_code == 0
+    assert responses[1]["id"] == 2
+    assert responses[1]["result"]["isError"] is True
+    assert responses[2]["id"] == 3
+    tools = responses[2]["result"]["tools"]
+    assert len(tools) == 10
+    assert all(tool["description"] for tool in tools)
+    assert all("inputSchema" in tool and "outputSchema" in tool for tool in tools)

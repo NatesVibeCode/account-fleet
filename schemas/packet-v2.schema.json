@@ -1,0 +1,406 @@
+{
+  "$defs": {
+    "ExtractedItem": {
+      "additionalProperties": false,
+      "properties": {
+        "item_id": {
+          "minLength": 1,
+          "title": "Item Id",
+          "type": "string"
+        },
+        "source_uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Uri"
+        },
+        "source_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        },
+        "content_type": {
+          "title": "Content Type",
+          "type": "string"
+        },
+        "claims": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Claims",
+          "type": "object"
+        },
+        "quotes": {
+          "items": {
+            "$ref": "#/$defs/QuoteRef"
+          },
+          "minItems": 1,
+          "title": "Quotes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "item_id",
+        "source_digest",
+        "content_type",
+        "claims",
+        "quotes"
+      ],
+      "title": "ExtractedItem",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "PacketAudit": {
+      "additionalProperties": false,
+      "properties": {
+        "total_batches_processed": {
+          "minimum": 0,
+          "title": "Total Batches Processed",
+          "type": "integer"
+        },
+        "total_tokens_consumed": {
+          "minimum": 0,
+          "title": "Total Tokens Consumed",
+          "type": "integer"
+        },
+        "total_cost_reported": {
+          "minimum": 0,
+          "title": "Total Cost Reported",
+          "type": "number"
+        },
+        "batches_verified": {
+          "minimum": 0,
+          "title": "Batches Verified",
+          "type": "integer"
+        },
+        "batches_failed": {
+          "minimum": 0,
+          "title": "Batches Failed",
+          "type": "integer"
+        },
+        "model_attempts": {
+          "minimum": 0,
+          "title": "Model Attempts",
+          "type": "integer"
+        },
+        "receipts_recorded": {
+          "minimum": 0,
+          "title": "Receipts Recorded",
+          "type": "integer"
+        },
+        "unknown_cost_attempts": {
+          "minimum": 0,
+          "title": "Unknown Cost Attempts",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_batches_processed",
+        "total_tokens_consumed",
+        "total_cost_reported",
+        "batches_verified",
+        "batches_failed",
+        "model_attempts",
+        "receipts_recorded",
+        "unknown_cost_attempts"
+      ],
+      "title": "PacketAudit",
+      "type": "object"
+    },
+    "ProviderReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "requested_route": {
+          "title": "Requested Route",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost"
+        },
+        "cost_status": {
+          "default": "unknown",
+          "enum": [
+            "reported_zero",
+            "billed",
+            "unknown"
+          ],
+          "title": "Cost Status",
+          "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Usage"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Seconds"
+        }
+      },
+      "required": [
+        "id",
+        "provider",
+        "requested_route",
+        "status"
+      ],
+      "title": "ProviderReceipt",
+      "type": "object"
+    },
+    "QuoteRef": {
+      "additionalProperties": false,
+      "properties": {
+        "slice_id": {
+          "description": "Exact source slice containing the quote",
+          "minLength": 1,
+          "title": "Slice Id",
+          "type": "string"
+        },
+        "start": {
+          "description": "Inclusive absolute character offset",
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "description": "Exclusive absolute character offset",
+          "exclusiveMinimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "text": {
+          "description": "Exact source substring at start:end",
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slice_id",
+        "start",
+        "end",
+        "text"
+      ],
+      "title": "QuoteRef",
+      "type": "object"
+    },
+    "TaskSpec": {
+      "$id": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "const": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+          "default": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+          "title": "$Schema",
+          "type": "string"
+        },
+        "format_version": {
+          "const": "bulk_lanes_task_v1",
+          "default": "bulk_lanes_task_v1",
+          "title": "Format Version",
+          "type": "string"
+        },
+        "name": {
+          "description": "Stable task name",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "instructions": {
+          "default": "Extract only facts supported by the supplied source slices.",
+          "description": "Outcome-specific directions; field structure belongs in claims_schema",
+          "title": "Instructions",
+          "type": "string"
+        },
+        "batch_size": {
+          "default": 6,
+          "description": "Maximum input items per model request",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "max_slice_chars": {
+          "default": 6000,
+          "description": "Maximum source characters exposed per item",
+          "maximum": 100000,
+          "minimum": 300,
+          "title": "Max Slice Chars",
+          "type": "integer"
+        },
+        "min_quote_chars": {
+          "default": 15,
+          "description": "Minimum admitted evidence-quote length",
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Min Quote Chars",
+          "type": "integer"
+        },
+        "claims_schema": {
+          "additionalProperties": true,
+          "description": "Draft 2020-12 object schema; type=object and additionalProperties=false are required",
+          "title": "Claims Schema",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "TaskSpec",
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/packet-v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "const": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/packet-v2.schema.json",
+      "default": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/packet-v2.schema.json",
+      "title": "$Schema",
+      "type": "string"
+    },
+    "format_version": {
+      "const": "bulk_lanes_v2",
+      "default": "bulk_lanes_v2",
+      "title": "Format Version",
+      "type": "string"
+    },
+    "exported_at": {
+      "title": "Exported At",
+      "type": "string"
+    },
+    "run_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "task": {
+      "$ref": "#/$defs/TaskSpec"
+    },
+    "task_revision": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Task Revision",
+      "type": "string"
+    },
+    "input_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Input Digest",
+      "type": "string"
+    },
+    "total_verified_records": {
+      "minimum": 0,
+      "title": "Total Verified Records",
+      "type": "integer"
+    },
+    "audit": {
+      "$ref": "#/$defs/PacketAudit"
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/ExtractedItem"
+      },
+      "title": "Records",
+      "type": "array"
+    },
+    "receipts": {
+      "items": {
+        "$ref": "#/$defs/ProviderReceipt"
+      },
+      "title": "Receipts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "exported_at",
+    "run_id",
+    "task",
+    "task_revision",
+    "input_digest",
+    "total_verified_records",
+    "audit",
+    "records",
+    "receipts"
+  ],
+  "title": "CleanPacket",
+  "type": "object"
+}

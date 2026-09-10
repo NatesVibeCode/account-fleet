@@ -49,7 +49,6 @@ class OpenRouterProvider(BaseProvider):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/bulk-lanes",
             "X-Title": "bulk-lanes"
         }
 
@@ -89,13 +88,12 @@ class OpenRouterProvider(BaseProvider):
                 usage = data.get("usage", {})
                 receipt["usage"] = usage
                 
-                # Check for reported zero cost on free models
-                if ":free" in model_name:
-                    receipt["cost"] = 0.0
-                    receipt["cost_status"] = "reported_zero"
-                else:
-                    receipt["cost"] = None
-                    receipt["cost_status"] = "budget_billable"
+                reported_cost = usage.get("cost") if isinstance(usage, dict) else None
+                if reported_cost is None:
+                    reported_cost = data.get("cost")
+                if isinstance(reported_cost, (int, float)):
+                    receipt["cost"] = float(reported_cost)
+                    receipt["cost_status"] = "reported_zero" if reported_cost == 0 else "billed"
 
                 receipt["status"] = "complete"
                 receipt["duration_seconds"] = time.time() - started

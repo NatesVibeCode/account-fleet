@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
     - uses: actions/checkout@v4
@@ -29,3 +29,13 @@ jobs:
     - name: Run test suite
       run: |
         pytest -v
+
+    - name: Verify installed wheel bootstrap
+      run: |
+        python -m pip wheel . --no-deps --wheel-dir dist
+        python -m pip install --force-reinstall --no-deps dist/*.whl
+        mkdir -p "$RUNNER_TEMP/bulk-lanes-workspace"
+        cd "$RUNNER_TEMP/bulk-lanes-workspace"
+        bulk-lanes setup --scope project --workspace-root "$PWD" --json
+        test -f .agents/skills/bulk-lanes/SKILL.md
+        test -f bulk-lanes.db

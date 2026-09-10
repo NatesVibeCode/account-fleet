@@ -1,25 +1,32 @@
-"""Item batching and prompt packaging."""
+"""Typed item batching and prompt packaging."""
 import hashlib
 import json
-from typing import Any, Dict, List
+from typing import Any
+
+from .models import InputItem, PackedBatch
 from .slicer import slice_document
 
 def pack_items(
-    raw_records: List[Dict[str, Any]],
+    raw_records: list[InputItem | dict[str, Any]],
     batch_size: int = 6,
     max_slice_chars: int = 6000
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Transforms raw records into sliced cards and packs them into bounded batches."""
     cards = []
-    for r in raw_records:
-        iid = str(r.get("item_id") or r.get("id") or r.get("cid") or hashlib.sha256(str(r).encode()).hexdigest()[:12])
-        text = str(r.get("text") or r.get("content") or r.get("body") or r.get("description") or "")
-        title = str(r.get("title") or r.get("name") or "")
+    for raw_record in raw_records:
+        record = raw_record if isinstance(raw_record, InputItem) else InputItem.model_validate(raw_record)
+        iid = record.item_id
+        text = record.text
+        title = record.title
         
         slices = slice_document(text, max_chars=max_slice_chars)
         cards.append({
             "item_id": iid,
             "title": title,
+            "source_uri": record.source_uri,
+            "content_type": record.content_type,
+            "metadata": record.metadata,
+            "source_digest": hashlib.sha256(text.encode()).hexdigest(),
             "slices": slices,
             "full_char_length": len(text)
         })
@@ -28,9 +35,10 @@ def pack_items(
     for i in range(0, len(cards), batch_size):
         chunk = cards[i:i + batch_size]
         batch_hash = hashlib.sha256(json.dumps([c["item_id"] for c in chunk], sort_keys=True).encode()).hexdigest()[:16]
-        batches.append({
+        batch = PackedBatch.model_validate({
             "batch_id": f"batch_{batch_hash}",
             "items": chunk
         })
+        batches.append(batch.model_dump(mode="json"))
 
     return batches

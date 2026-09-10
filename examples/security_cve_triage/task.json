@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+  "format_version": "bulk_lanes_task_v1",
+  "name": "security_cve_triage",
+  "instructions": "Extract vulnerability facts from the supplied advisory spans.",
+  "batch_size": 3,
+  "max_slice_chars": 6000,
+  "min_quote_chars": 15,
+  "claims_schema": {
+    "type": "object",
+    "properties": {
+      "attack_vector": {"enum": ["network", "local", "physical", "adjacent"]},
+      "severity": {"enum": ["critical", "high", "medium", "low"]},
+      "has_patch": {"type": "boolean"},
+      "summary": {"type": "string"}
+    },
+    "required": ["attack_vector", "severity", "has_patch", "summary"],
+    "additionalProperties": false
+  }
+}

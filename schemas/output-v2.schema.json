@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "ExtractedItem": {
+      "additionalProperties": false,
+      "properties": {
+        "item_id": {
+          "minLength": 1,
+          "title": "Item Id",
+          "type": "string"
+        },
+        "source_uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Uri"
+        },
+        "source_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        },
+        "content_type": {
+          "title": "Content Type",
+          "type": "string"
+        },
+        "claims": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Claims",
+          "type": "object"
+        },
+        "quotes": {
+          "items": {
+            "$ref": "#/$defs/QuoteRef"
+          },
+          "minItems": 1,
+          "title": "Quotes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "item_id",
+        "source_digest",
+        "content_type",
+        "claims",
+        "quotes"
+      ],
+      "title": "ExtractedItem",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "QuoteRef": {
+      "additionalProperties": false,
+      "properties": {
+        "slice_id": {
+          "description": "Exact source slice containing the quote",
+          "minLength": 1,
+          "title": "Slice Id",
+          "type": "string"
+        },
+        "start": {
+          "description": "Inclusive absolute character offset",
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "description": "Exclusive absolute character offset",
+          "exclusiveMinimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "text": {
+          "description": "Exact source substring at start:end",
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slice_id",
+        "start",
+        "end",
+        "text"
+      ],
+      "title": "QuoteRef",
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/output-v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/ExtractedItem"
+      },
+      "title": "Items",
+      "type": "array"
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "title": "ModelOutput",
+  "type": "object"
+}
