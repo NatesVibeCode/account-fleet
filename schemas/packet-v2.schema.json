@@ -391,6 +391,20 @@
           "title": "Max Cost Per 1K Output",
           "type": "number"
         },
+        "max_request_cost": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Max allowed spend per single request",
+          "title": "Max Request Cost"
+        },
         "openrouter_providers": {
           "anyOf": [
             {

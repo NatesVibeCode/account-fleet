@@ -239,6 +239,7 @@ class RoutePolicy(ClosedModel):
     allow_data_collection: bool = Field(default=True, description="Whether providers may collect request data")
     max_cost_per_1k_input: float = Field(default=0.0, ge=0, description="Max allowed cost per 1k input tokens")
     max_cost_per_1k_output: float = Field(default=0.0, ge=0, description="Max allowed cost per 1k output tokens")
+    max_request_cost: float | None = Field(default=None, ge=0, description="Max allowed spend per single request")
     openrouter_providers: list[str] | None = Field(default=None, description="Upstream OpenRouter providers to prioritize")
     openrouter_ignore: list[str] = Field(default_factory=list, description="Upstream OpenRouter providers to ignore")
     openrouter_order: list[str] | None = Field(default=None, description="Upstream OpenRouter provider ordering")

@@ -124,26 +124,30 @@ class RouteCatalog:
         self,
         route_id: str,
         provider: str,
-        cost_per_1k_input: float = 0.0,
-        cost_per_1k_output: float = 0.0,
+        cost_per_1k_input: Optional[float] = None,
+        cost_per_1k_output: Optional[float] = None,
         enabled: bool = True,
         price_state: Optional[str] = None,
         verification_source: str = "manual_registration",
     ) -> RouteInfo:
         """Register or update a route in the catalog."""
         if price_state is None:
-            price_state = (
-                PriceState.PRICE_OBSERVED_ZERO.value
-                if (cost_per_1k_input == 0 and cost_per_1k_output == 0)
-                else PriceState.UNKNOWN.value
-            )
+            if (
+                cost_per_1k_input == 0
+                and cost_per_1k_output == 0
+                and cost_per_1k_input is not None
+                and cost_per_1k_output is not None
+            ):
+                price_state = PriceState.PRICE_OBSERVED_ZERO.value
+            else:
+                price_state = PriceState.UNKNOWN.value
         route = RouteInfo(
             id=route_id,
             provider=provider,
             enabled=enabled,
             price_state=price_state,
-            cost_per_1k_input=cost_per_1k_input if cost_per_1k_input is not None else 0.0,
-            cost_per_1k_output=cost_per_1k_output if cost_per_1k_output is not None else 0.0,
+            cost_per_1k_input=cost_per_1k_input,
+            cost_per_1k_output=cost_per_1k_output,
             last_verified=time.strftime("%Y-%m-%d"),
             verification_source=verification_source,
         )
@@ -236,27 +240,79 @@ class RouteCatalog:
             seed=task_seed,
         )
 
-    def record_cost(self, route_id: str, reported_cost: Optional[float]):
-        """Update state from provider-reported cost and stop any route that bills."""
+    def record_cost(
+        self,
+        route_id: str,
+        reported_cost: Optional[float],
+        policy: Optional[Any] = None,
+    ) -> None:
+        """Update state from provider-reported cost and trip circuit breaker only when appropriate."""
         with self._lock:
+            routes = self.data.get("routes", [])
+            target_route = next((r for r in routes if r["id"] == route_id), None)
+
+            is_zero_price_route = False
+            if target_route:
+                if target_route.get("price_state") == PriceState.PRICE_OBSERVED_ZERO.value:
+                    is_zero_price_route = True
+                elif (
+                    target_route.get("cost_per_1k_input") == 0.0
+                    and target_route.get("cost_per_1k_output") == 0.0
+                    and target_route.get("cost_per_1k_input") is not None
+                    and target_route.get("cost_per_1k_output") is not None
+                ):
+                    is_zero_price_route = True
+
+            run_is_free_only = True
+            if policy and (
+                getattr(policy, "max_cost_per_1k_input", 0.0) > 0
+                or getattr(policy, "max_cost_per_1k_output", 0.0) > 0
+                or getattr(policy, "allowed_routes", None)
+            ):
+                run_is_free_only = False
+
             if reported_cost == 0:
-                for route in self.data.get("routes", []):
-                    if route["id"] == route_id:
-                        if route.get("price_state") == PriceState.DISABLED.value:
-                            return
-                        route["price_state"] = PriceState.PRICE_OBSERVED_ZERO.value
-                        route["last_price_observation"] = time.time()
+                if target_route:
+                    if target_route.get("price_state") != PriceState.DISABLED.value:
+                        target_route["price_state"] = PriceState.PRICE_OBSERVED_ZERO.value
+                        target_route["last_price_observation"] = time.time()
                         self.save()
-                        return
+                return
+
             if reported_cost is not None and reported_cost > 0:
-                for route in self.data.get("routes", []):
-                    if route["id"] == route_id:
-                        route["enabled"] = False
-                        route["price_state"] = PriceState.DISABLED.value
-                        route["disabled_reason"] = f"Circuit breaker tripped: reported cost {reported_cost} > 0 on free route."
-                        route["disabled_at"] = time.time()
+                # If this was admitted as a free route OR the run is strictly free-only:
+                if is_zero_price_route or run_is_free_only:
+                    if target_route:
+                        target_route["enabled"] = False
+                        target_route["price_state"] = PriceState.DISABLED.value
+                        target_route["disabled_reason"] = (
+                            f"Circuit breaker tripped: reported cost {reported_cost} > 0 on free route."
+                        )
+                        target_route["disabled_at"] = time.time()
                         self.save()
-                        raise RouteCircuitBreaker(f"Non-zero cost {reported_cost} reported on {route_id}! Route disabled.")
+                    raise RouteCircuitBreaker(
+                        f"Non-zero cost {reported_cost} reported on free route '{route_id}'! Route disabled."
+                    )
+
+                # For paid routes: check per-request spend ceiling if configured in policy
+                max_request_cost = getattr(policy, "max_request_cost", None) if policy else None
+                if max_request_cost is not None and reported_cost > max_request_cost:
+                    if target_route:
+                        target_route["enabled"] = False
+                        target_route["price_state"] = PriceState.DISABLED.value
+                        target_route["disabled_reason"] = (
+                            f"Circuit breaker tripped: reported cost {reported_cost} exceeded policy max_request_cost {max_request_cost}."
+                        )
+                        target_route["disabled_at"] = time.time()
+                        self.save()
+                    raise RouteCircuitBreaker(
+                        f"Request cost {reported_cost} exceeded policy max_request_cost ceiling of {max_request_cost} on '{route_id}'!"
+                    )
+
+                # Record last price observation for the paid route without disabling it
+                if target_route:
+                    target_route["last_price_observation"] = time.time()
+                    self.save()
 
     def refresh_from_opencode(self) -> int:
         """Query OpenCode and record candidates separately from observed zero prices."""

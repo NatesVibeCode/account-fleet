@@ -109,9 +109,11 @@ def filter_and_rank_routes(
             if policy.excluded_routes and rid in policy.excluded_routes:
                 continue
             if policy.max_cost_per_1k_input > 0 or policy.max_cost_per_1k_output > 0:
-                cost_in = r.get("cost_per_1k_input", 0.0) or 0.0
-                cost_out = r.get("cost_per_1k_output", 0.0) or 0.0
-                if cost_in > policy.max_cost_per_1k_input or cost_out > policy.max_cost_per_1k_output:
+                cost_in = r.get("cost_per_1k_input")
+                cost_out = r.get("cost_per_1k_output")
+                if policy.max_cost_per_1k_input > 0 and cost_in is not None and cost_in > policy.max_cost_per_1k_input:
+                    continue
+                if policy.max_cost_per_1k_output > 0 and cost_out is not None and cost_out > policy.max_cost_per_1k_output:
                     continue
 
         filtered.append(r)

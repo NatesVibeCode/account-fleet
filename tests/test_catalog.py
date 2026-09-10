@@ -1,6 +1,7 @@
 import httpx
 import pytest
 from bulk_lanes.catalog import PriceState, RouteCatalog, RouteCircuitBreaker, classify_price_state
+from bulk_lanes.models import RoutePolicy
 
 def test_catalog_ladder_rotation(tmp_path):
     cfg = tmp_path / "routes.json"
@@ -98,3 +99,51 @@ def test_refresh_from_openai_compatible_local_is_free(tmp_path, monkeypatch):
     route_ids = {r["id"] for r in free_routes}
     assert "openai_compatible/llama3.2" in route_ids
     assert "openai_compatible/mistral" in route_ids
+
+
+def test_record_cost_paid_policy_within_spend_limit(tmp_path):
+    cat = RouteCatalog(config_path=tmp_path / "routes.json")
+    cat.data = {
+        "revision": 1,
+        "routes": [
+            {"id": "r_paid", "enabled": True, "price_state": "unknown", "cost_per_1k_input": 1.0, "cost_per_1k_output": 2.0}
+        ]
+    }
+    cat.save()
+
+    policy = RoutePolicy(max_cost_per_1k_input=2.0, max_cost_per_1k_output=3.0, max_request_cost=0.10)
+    cat.record_cost("r_paid", reported_cost=0.025, policy=policy)
+
+    assert cat.data["routes"][0]["enabled"] is True
+    assert cat.data["routes"][0]["last_price_observation"] is not None
+    assert cat.data["routes"][0]["last_price_observation"] > 0
+
+
+def test_record_cost_paid_policy_exceeding_max_request_cost(tmp_path):
+    cat = RouteCatalog(config_path=tmp_path / "routes.json")
+    cat.data = {
+        "revision": 1,
+        "routes": [
+            {"id": "r_paid", "enabled": True, "price_state": "unknown", "cost_per_1k_input": 1.0, "cost_per_1k_output": 2.0}
+        ]
+    }
+    cat.save()
+
+    policy = RoutePolicy(max_cost_per_1k_input=2.0, max_cost_per_1k_output=3.0, max_request_cost=0.01)
+    with pytest.raises(RouteCircuitBreaker) as exc:
+        cat.record_cost("r_paid", reported_cost=0.05, policy=policy)
+
+    assert "exceeded policy max_request_cost" in str(exc.value)
+    assert cat.data["routes"][0]["enabled"] is False
+    assert "max_request_cost" in cat.data["routes"][0]["disabled_reason"]
+
+
+def test_add_route_cost_safety_defaults(tmp_path):
+    cat = RouteCatalog(db_path=tmp_path / "state.db")
+    route = cat.add_route(
+        route_id="groq/llama-3.3-70b-versatile",
+        provider="groq",
+    )
+    assert route.price_state == PriceState.UNKNOWN.value
+    assert route.cost_per_1k_input is None
+    assert route.cost_per_1k_output is None

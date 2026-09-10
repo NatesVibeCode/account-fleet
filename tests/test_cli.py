@@ -86,6 +86,76 @@ def test_routes_add_and_list_cli(tmp_path, capsys):
     assert list_payload["routes"][0]["id"] == "local/test-model"
 
 
+def test_routes_add_cost_safety_defaults(tmp_path, capsys):
+    db = tmp_path / "routes_safety.db"
+    # Adding a route without --free or explicit costs must default to unknown price state and None costs
+    cli.cmd_routes(Namespace(
+        action="add",
+        route_id="groq/llama-3.3-70b-versatile",
+        add=None,
+        provider="groq",
+        free=False,
+        input_cost=None,
+        output_cost=None,
+        disable=False,
+        all=False,
+        refresh=False,
+        db=str(db),
+        json=True,
+    ))
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "added"
+    assert payload["route"]["price_state"] == "unknown"
+    assert payload["route"]["cost_per_1k_input"] is None
+    assert payload["route"]["cost_per_1k_output"] is None
+
+    # Adding a route with --free must register as price_observed_zero and 0.0
+    cli.cmd_routes(Namespace(
+        action="add",
+        route_id="ollama/llama3.2:latest",
+        add=None,
+        provider="ollama",
+        free=True,
+        input_cost=None,
+        output_cost=None,
+        disable=False,
+        all=False,
+        refresh=False,
+        db=str(db),
+        json=True,
+    ))
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "added"
+    assert payload["route"]["price_state"] == "price_observed_zero"
+    assert payload["route"]["cost_per_1k_input"] == 0.0
+    assert payload["route"]["cost_per_1k_output"] == 0.0
+
+
+def test_cli_policy_flag_parsing():
+    parser = cli.build_parser()
+
+    # Comma-separated list and order
+    args = parser.parse_args([
+        "run", "demo", "--input", "in.jsonl",
+        "--openrouter-providers", "Anthropic,Together",
+        "--openrouter-order", "latency",
+        "--max-request-cost", "0.05",
+    ])
+    policy = cli._extract_policy(args)
+    assert policy.openrouter_providers == ["Anthropic", "Together"]
+    assert policy.openrouter_order == ["latency"]
+    assert policy.max_request_cost == 0.05
+
+    # Repeatable flags
+    args2 = parser.parse_args([
+        "run", "demo", "--input", "in.jsonl",
+        "--openrouter-provider", "Together",
+        "--openrouter-provider", "DeepInfra",
+    ])
+    policy2 = cli._extract_policy(args2)
+    assert policy2.openrouter_providers == ["Together", "DeepInfra"]
+
+
 def test_export_and_status_cli(tmp_path, capsys, monkeypatch):
     monkeypatch.chdir(tmp_path)
     import csv

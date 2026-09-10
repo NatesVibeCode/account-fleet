@@ -75,7 +75,11 @@ class OpenAICompatibleProvider(BaseProvider):
 
         # Strip provider prefix if present (e.g., ollama/llama3 -> llama3, openai/gpt-4o -> gpt-4o)
         model_name = route_id
-        for prefix in ("openai_compatible/", "ollama/", "lmstudio/", "vllm/", "groq/", "cerebras/", "openai/"):
+        prefixes = (
+            "openai_compatible/", "ollama/", "lmstudio/", "vllm/", "groq/", "cerebras/", "openai/",
+            "openai_compatible:", "ollama:", "lmstudio:", "vllm:", "groq:", "cerebras:", "openai:",
+        )
+        for prefix in prefixes:
             if model_name.startswith(prefix):
                 model_name = model_name[len(prefix):]
                 break

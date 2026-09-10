@@ -201,7 +201,7 @@ class Engine:
 
             # Record cost to monitor zero-price guarantee & circuit breaker
             try:
-                self.catalog.record_cost(route_id, receipt.get("cost"))
+                self.catalog.record_cost(route_id, receipt.get("cost"), policy=self.policy)
             except Exception as e:
                 attempt_record.update({
                     "transport_status": "circuit_breaker",

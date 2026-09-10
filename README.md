@@ -46,17 +46,17 @@ fb_2,low,"Positive customer feedback on eco packaging","packaging was completely
 fb_3,medium,"Support request regarding invoice remains unanswered","never answered my email about the missing invoice",1,"",9e11fd...
 ```
 
-Every claim is paired with verbatim quotes directly verified against the source text at character-exact offsets.
+Outputs contain structured claims paired with verbatim quotes deterministically verified against the raw source text.
 
 ---
 
 ## Why You Can Trust the Output
 
-1. **Character-Exact Quote Grounding**: Every claim must be anchored to verifiable evidence. Extracted quotes are deterministically verified against the source text at character-level precision and resolved to canonical `[start, end]` character offsets. Unsupported claims or hallucinated quotes fail validation and trigger automatic route rotation.
+1. **Deterministic Quote Verification**: Cited quotes are verified against the raw source text at character-level precision and resolved to canonical `[start, end]` character offsets. If a model fabricates or alters a cited quote, validation fails and triggers immediate route rotation. *(Note: This deterministically proves that all cited quotes are verbatim source substrings; semantic entailment of claims from quotes is model-generated).*
 2. **Closed JSON Schemas**: Outputs adhere strictly to closed JSON Schemas defined in the `TaskSpec`. Models cannot add unexpected fields, produce unformatted markdown, or drift out of schema.
 3. **Intelligent Route Scoring**: Instead of blind round-robin rotation, `bulk-lanes` uses Bayesian-smoothed historical scoring based on verification rates, malformed JSON rates, grounding accuracy, and latency. Models that consistently produce verified results are prioritized.
 4. **Non-Destructive Rate-Limit Handling**: When an API returns a `429 Too Many Requests` or `5xx Server Error`, `bulk-lanes` puts the route in cooldown and retries the batch immediately on an alternative route without burning the batch attempt limit.
-5. **Zero-Price Circuit Breaker**: Route pricing is observed directly from provider receipts. If a route begins charging or exceeds pricing thresholds without explicit authorization, the run trips the circuit breaker immediately.
+5. **Zero-Price Circuit Breaker & Spend Ceilings**: For zero-price campaigns, route pricing is observed directly from provider receipts; if an unexpected charge occurs, the circuit breaker trips immediately. For paid campaigns, catalog rates and `--max-request-cost` spend ceilings enforce budget boundaries.
 
 ---
 
@@ -164,7 +164,7 @@ Run bulk workloads completely locally with **Ollama**, **LM Studio**, **vLLM**, 
 
 ```bash
 # Register your local or custom route in the catalog
-bulk-lanes routes add openai_compatible:llama3.2:latest --provider openai_compatible --free
+bulk-lanes routes add ollama/llama3.2:latest --provider ollama --free
 
 # Or configure environment variables
 export OPENAI_COMPATIBLE_BASE_URL="http://localhost:11434/v1"
@@ -178,7 +178,7 @@ bulk-lanes run my-task --input data.csv --id-column id --text-column text --prov
 Endpoints on `localhost` or `127.0.0.1` are automatically marked free (`cost = 0.0`). For third-party cloud OpenAI-compatible endpoints, specify costs explicitly (`--input-cost` / `--output-cost`) or leave them as unknown-cost to prevent accidental misclassification.
 
 ### 5. Explicit Data & Privacy Policy
-Enforce zero data retention (ZDR), prohibit provider data collection, and control upstream routing on a per-run basis:
+Enforce zero data retention (ZDR), prohibit provider data collection, limit request spend, and control upstream routing on a per-run basis:
 
 ```bash
 bulk-lanes run my-task \
@@ -187,8 +187,11 @@ bulk-lanes run my-task \
   --no-data-collection \
   --provider openrouter \
   --exclude-provider opencode \
-  --openrouter-providers Anthropic,Together
+  --openrouter-providers Anthropic,Together \
+  --max-request-cost 0.05
 ```
+
+You can pass `--openrouter-providers` as a comma-separated list or as repeatable `--openrouter-provider` flags.
 
 ---
 

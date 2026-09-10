@@ -34,7 +34,11 @@ class ProviderRegistry:
             return self._providers[provider_hint.lower()]
 
         # Fallback to route_id prefix if provider_hint is absent or unknown
-        prefix = route_id.split("/", 1)[0].lower() if "/" in route_id else ""
+        prefix = ""
+        if "/" in route_id:
+            prefix = route_id.split("/", 1)[0].lower()
+        elif ":" in route_id:
+            prefix = route_id.split(":", 1)[0].lower()
         if prefix in self._providers:
             return self._providers[prefix]
 

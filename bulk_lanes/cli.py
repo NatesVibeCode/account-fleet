@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from . import ui
-from .catalog import RouteCatalog
+from .catalog import PriceState, RouteCatalog
 from .engine import Engine
 from .export import export_clean_packet
 from .input_data import load_input_items
@@ -34,22 +34,40 @@ from .setup import installed_skill_matches, setup_workspace, skill_destination
 from .task import load_task_spec
 
 
+def _split_csv_list(values: list[str] | str | None) -> list[str] | None:
+    if not values:
+        return None
+    if isinstance(values, str):
+        values = [values]
+    result: list[str] = []
+    for item in values:
+        for part in item.split(","):
+            cleaned = part.strip()
+            if cleaned:
+                result.append(cleaned)
+    return result if result else None
+
+
 def _extract_policy(args: argparse.Namespace) -> RoutePolicy | None:
-    providers = getattr(args, "provider", None)
-    exclude_providers = getattr(args, "exclude_provider", None) or []
-    routes = getattr(args, "route", None)
-    exclude_routes = getattr(args, "exclude_route", None) or []
+    providers = _split_csv_list(getattr(args, "provider", None))
+    exclude_providers = _split_csv_list(getattr(args, "exclude_provider", None)) or []
+    routes = _split_csv_list(getattr(args, "route", None))
+    exclude_routes = _split_csv_list(getattr(args, "exclude_route", None)) or []
     zdr = bool(getattr(args, "zdr", False))
     no_data_coll = bool(getattr(args, "no_data_collection", False))
     max_cost_in = float(getattr(args, "max_cost_in", 0.0) or 0.0)
     max_cost_out = float(getattr(args, "max_cost_out", 0.0) or 0.0)
-    openrouter_providers = getattr(args, "openrouter_provider", None)
-    openrouter_ignore = getattr(args, "openrouter_ignore", None) or []
+    raw_req_cost = getattr(args, "max_request_cost", None)
+    max_request_cost = float(raw_req_cost) if raw_req_cost is not None else None
+    openrouter_providers = _split_csv_list(getattr(args, "openrouter_providers", None))
+    openrouter_ignore = _split_csv_list(getattr(args, "openrouter_ignore", None)) or []
+    openrouter_order = _split_csv_list(getattr(args, "openrouter_order", None))
 
     if not any([
         providers, exclude_providers, routes, exclude_routes,
         zdr, no_data_coll, max_cost_in > 0, max_cost_out > 0,
-        openrouter_providers, openrouter_ignore,
+        max_request_cost is not None,
+        openrouter_providers, openrouter_ignore, openrouter_order,
     ]):
         return None
 
@@ -62,8 +80,10 @@ def _extract_policy(args: argparse.Namespace) -> RoutePolicy | None:
         allow_data_collection=not no_data_coll,
         max_cost_per_1k_input=max_cost_in,
         max_cost_per_1k_output=max_cost_out,
+        max_request_cost=max_request_cost,
         openrouter_providers=openrouter_providers,
         openrouter_ignore=openrouter_ignore,
+        openrouter_order=openrouter_order,
     )
 
 
@@ -146,9 +166,21 @@ def cmd_routes(args: argparse.Namespace) -> None:
             raise SystemExit(1)
         provider = getattr(args, "provider", None) or (route_id.split("/", 1)[0] if "/" in route_id else "openai_compatible")
         is_free = bool(getattr(args, "free", False))
-        in_cost = float(getattr(args, "input_cost", 0.0) or 0.0)
-        out_cost = float(getattr(args, "output_cost", 0.0) or 0.0)
-        price_state = "price_observed_zero" if (is_free or (in_cost == 0 and out_cost == 0)) else "unknown"
+        in_cost = getattr(args, "input_cost", None)
+        out_cost = getattr(args, "output_cost", None)
+        if is_free:
+            price_state = PriceState.PRICE_OBSERVED_ZERO.value
+            in_cost = 0.0 if in_cost is None else float(in_cost)
+            out_cost = 0.0 if out_cost is None else float(out_cost)
+        elif in_cost is not None and out_cost is not None and float(in_cost) == 0.0 and float(out_cost) == 0.0:
+            price_state = PriceState.PRICE_OBSERVED_ZERO.value
+            in_cost = float(in_cost)
+            out_cost = float(out_cost)
+        else:
+            price_state = PriceState.UNKNOWN.value
+            in_cost = float(in_cost) if in_cost is not None else None
+            out_cost = float(out_cost) if out_cost is not None else None
+
         created = catalog.add_route(
             route_id=route_id,
             provider=provider,
@@ -432,16 +464,18 @@ def _input_options(parser: argparse.ArgumentParser) -> None:
 
 
 def _policy_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--transport", "--provider", dest="provider", action="append", help="Allow specific transport provider (can repeat)")
-    parser.add_argument("--exclude-transport", "--exclude-provider", dest="exclude_provider", action="append", help="Exclude specific transport provider")
-    parser.add_argument("--route", action="append", help="Allow specific route ID (can repeat)")
-    parser.add_argument("--exclude-route", action="append", help="Exclude specific route ID (can repeat)")
+    parser.add_argument("--transport", "--provider", dest="provider", action="append", help="Allow specific transport provider (can repeat or comma-separate)")
+    parser.add_argument("--exclude-transport", "--exclude-provider", dest="exclude_provider", action="append", help="Exclude specific transport provider (can repeat or comma-separate)")
+    parser.add_argument("--route", action="append", help="Allow specific route ID (can repeat or comma-separate)")
+    parser.add_argument("--exclude-route", action="append", help="Exclude specific route ID (can repeat or comma-separate)")
     parser.add_argument("--zdr", action="store_true", help="Require Zero Data Retention upstream")
     parser.add_argument("--no-data-collection", action="store_true", help="Deny provider data collection")
     parser.add_argument("--max-cost-in", type=float, default=0.0, help="Max cost per 1k input tokens (default: 0.0)")
     parser.add_argument("--max-cost-out", type=float, default=0.0, help="Max cost per 1k output tokens (default: 0.0)")
-    parser.add_argument("--openrouter-provider", action="append", help="Upstream OpenRouter inference host preference (e.g. Together, DeepInfra)")
-    parser.add_argument("--openrouter-ignore", action="append", help="Upstream OpenRouter inference host to ignore")
+    parser.add_argument("--max-request-cost", type=float, default=None, help="Max allowed spend per single request (default: unlimited)")
+    parser.add_argument("--openrouter-provider", "--openrouter-providers", dest="openrouter_providers", action="append", help="Upstream OpenRouter inference host preference (can repeat or comma-separate, e.g. Together, DeepInfra)")
+    parser.add_argument("--openrouter-order", action="append", help="Upstream OpenRouter provider order preference (can repeat or comma-separate)")
+    parser.add_argument("--openrouter-ignore", action="append", help="Upstream OpenRouter inference host to ignore (can repeat or comma-separate)")
 
 
 def _common(parser: argparse.ArgumentParser, *, json_output: bool = True, database: bool = True) -> None:
@@ -476,8 +510,8 @@ def build_parser() -> argparse.ArgumentParser:
     routes.add_argument("--add", help="Route ID to add")
     routes.add_argument("--provider", help="Provider for added route (e.g. ollama, openai_compatible, groq)")
     routes.add_argument("--free", action="store_true", help="Mark added route as observed zero price")
-    routes.add_argument("--input-cost", type=float, default=0.0, help="Cost per 1k input tokens")
-    routes.add_argument("--output-cost", type=float, default=0.0, help="Cost per 1k output tokens")
+    routes.add_argument("--input-cost", type=float, default=None, help="Cost per 1k input tokens")
+    routes.add_argument("--output-cost", type=float, default=None, help="Cost per 1k output tokens")
     routes.add_argument("--disable", action="store_true", help="Register route as disabled")
     routes.add_argument("--all", action="store_true", help="Include non-zero, candidate, and disabled routes")
     routes.add_argument("--refresh", action="store_true", help="Contact providers and update route observations")

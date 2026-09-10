@@ -15,7 +15,9 @@ def test_provider_registry_resolution():
     assert registry.resolve("ollama", "my-model").__class__.__name__ == "OpenAICompatibleProvider"
     # Resolution by route prefix
     assert registry.resolve(None, "vllm/llama-3").__class__.__name__ == "OpenAICompatibleProvider"
+    assert registry.resolve(None, "ollama:llama3.2:latest").__class__.__name__ == "OpenAICompatibleProvider"
     assert registry.resolve(None, "openrouter/free").__class__.__name__ == "OpenRouterProvider"
+    assert registry.resolve(None, "openrouter:free").__class__.__name__ == "OpenRouterProvider"
 
 
 def test_openai_compatible_successful_completion(monkeypatch):
@@ -64,3 +66,25 @@ def test_openai_compatible_transient_503(monkeypatch):
     assert ok is False
     assert receipt["error_type"] == "transient_http"
     assert receipt["retry_after"] == 5.0
+
+
+def test_openai_compatible_prefix_stripping(monkeypatch):
+    captured_model = None
+
+    def mock_post(url, headers, json):
+        nonlocal captured_model
+        captured_model = json.get("model")
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "{}"}}],
+            "usage": {"total_tokens": 5},
+            "cost": 0.0,
+        })
+
+    monkeypatch.setattr(httpx.Client, "post", lambda self, url, headers, json: mock_post(url, headers, json))
+
+    prov = OpenAICompatibleProvider(base_url="http://localhost:11434/v1")
+    prov.run_prompt("ollama/llama3.2:latest", "test")
+    assert captured_model == "llama3.2:latest"
+
+    prov.run_prompt("ollama:llama3.2:latest", "test")
+    assert captured_model == "llama3.2:latest"

@@ -45,7 +45,7 @@ bulk-lanes eval my-task --input eval-sample.csv --id-column id --text-column bod
 ```bash
 bulk-lanes tasks --json
 bulk-lanes routes --json
-bulk-lanes routes add openai_compatible:llama3.2:latest --provider openai_compatible --free
+bulk-lanes routes add ollama/llama3.2:latest --provider ollama --free
 bulk-lanes sessions my-run --json
 bulk-lanes status my-run --json
 bulk-lanes resume my-run --json
@@ -61,10 +61,14 @@ Packaged routes are disabled hints, not current price evidence. `routes --refres
 Runs can be restricted by policy:
 - `--zdr`: Enforce zero data retention on provider models.
 - `--no-data-collection`: Disallow models that train on inputs.
+- `--max-request-cost <amount>`: Upper dollar spend limit per single inference request.
+- `--max-cost-in <amount>`: Maximum catalog price per 1k input tokens.
+- `--max-cost-out <amount>`: Maximum catalog price per 1k output tokens.
 - `--provider <transport>`: Restrict candidate routes to specific transports (`openrouter`, `opencode`, `openai_compatible`).
 - `--exclude-provider <transport>`: Exclude specific transports.
-- `--openrouter-providers <names>`: Filter OpenRouter upstream routing (e.g. `Anthropic,Together`).
-- `--openrouter-order <names>`: Custom ordering for upstream OpenRouter providers.
+- `--openrouter-providers <names>`: Filter OpenRouter upstream routing (supports comma-separated list or repeatable `--openrouter-provider`).
+- `--openrouter-order <names>`: Custom ordering for upstream OpenRouter providers (comma-separated or repeatable).
+- `--openrouter-ignore <names>`: Upstream OpenRouter hosts to ignore (comma-separated or repeatable).
 
 ## Database
 
