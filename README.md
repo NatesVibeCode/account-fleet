@@ -218,6 +218,7 @@ free-fleet resume <run_id>
 | `doctor` | Check SQLite, installed CLIs, provider authentication, and available routes |
 | `routes` | List or refresh discovered model routes (`--refresh`) |
 | `routes add` | Register an explicit custom or local model route (`--free`, `--input-cost`) |
+| `cooldowns` | Inspect active rate-limit route cooldowns or clear them (`--clear`, `--route`) |
 | `tasks` | List registered task definitions |
 | `init` | Create a typed task from a preset (`classify`, `extract`, `triage`, `summarize`) |
 | `validate` | Check task schema and input formatting without inference |
