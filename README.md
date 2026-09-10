@@ -4,166 +4,254 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-Run evidence-bound bulk classification, extraction, summarization, and triage through an installed model provider.
+High-throughput, evidence-grounded AI bulk processing across free, paid, and local models.
 
-SQLite is the control plane. JSON and JSONL are typed import/export formats.
+Run structured classification, entity extraction, summarization, and triage across thousands of records with SQLite checkpointing, character-exact quote grounding, and strict zero-hallucination verification.
 
-One task shape covers many jobs: `instructions` states the outcome, while a closed `claims_schema` defines the exact returned fields. Presets handle common work; a TaskSpec JSON handles domain-specific fields without adding code or accepting arbitrary output.
+---
 
-## Fresh system
+## 30-Second Example: CSV In, Verified CSV Out
+
+Suppose you have customer feedback in `feedback.csv`:
+
+```csv
+id,comment
+fb_1,"The onboarding was smooth, but the checkout button gave a 500 error."
+fb_2,"Fast shipping and the packaging was completely recyclable."
+fb_3,"Customer support never answered my email about the missing invoice."
+```
+
+### 1. Initialize a task and run
+
+```bash
+# Initialize a typed triage task preset
+bulk-lanes init customer-triage --preset triage
+
+# Process the CSV using intelligent model routing
+bulk-lanes run customer-triage --input feedback.csv --id-column id --text-column comment --run-id triage-01
+```
+
+### 2. Export verified results
+
+```bash
+bulk-lanes export triage-01 --format csv --output results.csv
+```
+
+### 3. Output (`results.csv`)
+
+```csv
+item_id,urgency,category,summary,quote_text
+fb_1,critical,bug,"Checkout button failure","checkout button gave a 500 error"
+fb_2,low,praise,"Praise for recyclable packaging","packaging was completely recyclable"
+fb_3,medium,support,"Unanswered invoice support email","never answered my email about the missing invoice"
+```
+
+Every claim is paired with verbatim quotes directly extracted from the source text and verified down to the character offset.
+
+---
+
+## Why You Can Trust the Output
+
+1. **Character-Exact Grounding**: Models cannot invent facts. Every claim must cite an exact substring from the source record. `bulk-lanes` checks every quote against the source text and calculates canonical `[start, end]` character offsets. Hallucinated quotes fail validation and trigger automatic retries.
+2. **Closed JSON Schemas**: Outputs adhere strictly to closed JSON Schemas defined in the `TaskSpec`. Models cannot add unexpected fields, produce unformatted markdown, or drift out of schema.
+3. **Intelligent Route Scoring**: Instead of blind round-robin rotation, `bulk-lanes` uses Bayesian-smoothed historical scoring based on verification rates, malformed JSON rates, grounding accuracy, and latency. Models that consistently produce verified results are prioritized.
+4. **Non-Destructive Rate-Limit Handling**: When an API returns a `429 Too Many Requests` or `5xx Server Error`, `bulk-lanes` automatically cools down that route and retries the batch immediately on an alternative route without burning the batch attempt limit.
+5. **Zero-Price Circuit Breaker**: Route pricing is observed directly from provider receipts. If a route begins charging or exceeds pricing thresholds without explicit authorization, the run trips the circuit breaker immediately.
+
+---
+
+## Quickstart
+
+### Installation
 
 ```bash
 git clone https://github.com/NatesVibeCode/bulk-lanes.git
 python3 -m pip install ./bulk-lanes
+```
 
-mkdir my-bulk-workspace && cd my-bulk-workspace
+### Initialize Workspace
+
+```bash
+mkdir my-workspace && cd my-workspace
 bulk-lanes setup --workspace-root "$PWD" --refresh-routes
-bulk-lanes init product-triage --preset classify
-bulk-lanes validate product-triage --input product-triage.sample.jsonl
-bulk-lanes test product-triage --input product-triage.sample.jsonl
-bulk-lanes run product-triage --input product-triage.sample.jsonl --run-id first-run
 ```
 
-The default project skill location is `.agents/skills/bulk-lanes`. Use `--scope user` for `~/.agents/skills`, or `--skill-root PATH` only when a harness documents a different discovery root.
+### Presets
 
-`setup` is idempotent. It installs the standard skill bundled in the Python package, initializes the workspace database, and returns typed stdio MCP configuration plus exact next commands. It never overwrites different content unless `--force` is explicit. The CLI and MCP server work even when a harness does not support skills.
-
-Resume without rebuilding the task or input:
+Create typed tasks instantly with built-in presets:
 
 ```bash
-bulk-lanes resume first-run
-bulk-lanes export first-run
+bulk-lanes init classify-demo --preset classify
+bulk-lanes init extract-demo --preset extract
+bulk-lanes init triage-demo --preset triage
+bulk-lanes init summarize-demo --preset summarize
 ```
 
-The default database is `./bulk-lanes.db`. Select another with `--db` or `BULK_LANES_DB`. During setup, the database must remain below the selected workspace root so the same path is valid through MCP.
-
-## What SQLite owns
-
-- immutable task revisions and the selected current revision;
-- current routes plus append-only price observations;
-- runs, typed batch payloads, atomic worker leases, and attempt ceilings;
-- append-only batch attempts, verified results, and model receipts with explicit current-result selection;
-- worker-session summaries and export state.
-
-The queue uses WAL mode, foreign keys, a busy timeout, and `BEGIN IMMEDIATE` leasing. Two workers cannot claim the same batch.
-
-Inspect the exact schema:
+Validate and test before launching large runs:
 
 ```bash
-bulk-lanes schema database
+# Validate task spec and input without making any API calls
+bulk-lanes validate classify-demo --input input.jsonl
+
+# Test a single real batch
+bulk-lanes test classify-demo --input input.jsonl
 ```
 
-## Standard input
+---
 
-Every JSON or JSONL record uses one closed shape:
+## Core Capabilities
 
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/input-item-v1.schema.json",
-  "item_id": "item_1",
-  "text": "Source text to process",
-  "title": "Optional title",
-  "source_uri": "https://example.com/source",
-  "content_type": "text/plain",
-  "metadata": {}
-}
-```
-
-Only `item_id` and `text` are required. Unknown fields, duplicate IDs, blank text, and malformed JSONL fail validation.
-
-## Typed task fields
-
-`init` includes four focused presets:
+### 1. CSV In / CSV Out
+Directly process tabular data without custom transformation scripts:
 
 ```bash
-bulk-lanes init labels --preset classify
-bulk-lanes init facts --preset extract
-bulk-lanes init queue --preset triage
-bulk-lanes init summaries --preset summarize
+# Run on CSV specifying ID and text columns
+bulk-lanes run my-task --input records.csv --id-column id --text-column body
+
+# Export directly to CSV
+bulk-lanes export <run_id> --format csv --output results.csv
 ```
 
-Task-specific fields live inside a closed JSON Schema. The stable record envelope is always:
-
-```json
-{
-  "item_id": "item_1",
-  "source_uri": "https://example.com/source",
-  "source_digest": "sha256...",
-  "content_type": "text/plain",
-  "claims": {},
-  "quotes": [{"slice_id": "full", "start": 0, "end": 11, "text": "exact quote"}]
-}
-```
-
-Models only need to return `slice_id` and exact quote `text`. The verifier computes offsets when the quote occurs once. Repeated text requires explicit offsets. Stored and exported records always contain canonical offsets.
-
-Print the admitted schemas:
+### 2. Live Run Monitoring
+Track queue progress, worker concurrency, and route-level metrics in real time:
 
 ```bash
-bulk-lanes schema task
-bulk-lanes schema input
-bulk-lanes schema candidate-output
-bulk-lanes schema output
-bulk-lanes schema packet
+bulk-lanes status <run_id> --watch
 ```
+
+Output:
+```
+============================================================
+Run: triage-01  |  Task: customer-triage  |  Status: RUNNING
+Progress: [=========================>              ] 62.5% (650/1040)
+============================================================
+Batches:
+  Pending:    15
+  Leased:      4
+  Done:       65
+  Failed:      0
+
+Route Performance:
+  openrouter:qwen/qwen-2.5-72b-instruct:free
+    Attempts: 45 | Verified: 44 | Rate limits: 1 | Latency: 1.2s
+  openrouter:meta-llama/llama-3.3-70b-instruct:free
+    Attempts: 24 | Verified: 23 | Rate limits: 0 | Latency: 1.8s
+```
+
+### 3. Continuous Route Evaluation
+Benchmark available routes against test datasets to determine which models excel at your specific task:
+
+```bash
+bulk-lanes eval customer-triage --input test-samples.csv --id-column id --text-column comment
+```
+
+Output:
+```
+========================================================================================
+Route Evaluation Benchmark
+Task: customer-triage  |  Samples: 20
+========================================================================================
+Route                                      Success   Grounding   Score    Avg Latency
+----------------------------------------------------------------------------------------
+openrouter:qwen/qwen-2.5-72b-instruct:free   100.0%     100.0%    0.982          1.15s
+openrouter:meta-llama/llama-3.3-70b-free      95.0%      90.0%    0.871          1.82s
+opencode:llama3                               80.0%      85.0%    0.742          2.40s
+```
+Evaluation benchmarks automatically update route selection priors for subsequent runs.
+
+### 4. Local Models & Generic OpenAI-Compatible Providers
+Run bulk workloads completely locally with **Ollama**, **LM Studio**, **vLLM**, or fast cloud inference providers like **Groq** and **Cerebras**:
+
+```bash
+export OPENAI_COMPATIBLE_BASE_URL="http://localhost:11434/v1"
+export OPENAI_COMPATIBLE_API_KEY="ollama"
+export OPENAI_COMPATIBLE_MODEL="llama3.2:latest"
+
+bulk-lanes run my-task --input data.csv --id-column id --text-column text --provider openai_compatible
+```
+
+### 5. Explicit Data & Privacy Policy
+Enforce zero data retention (ZDR), prohibit provider data collection, and filter providers on a per-run basis:
+
+```bash
+bulk-lanes run my-task \
+  --input sensitive-data.jsonl \
+  --zdr \
+  --no-data-collection \
+  --provider openrouter \
+  --exclude-provider opencode
+```
+
+---
+
+## SQLite Control Plane
+
+`bulk-lanes` uses SQLite in WAL mode with `BEGIN IMMEDIATE` atomic leases. If a worker crashes or a laptop closes, the run can be resumed seamlessly:
+
+```bash
+bulk-lanes resume <run_id>
+```
+
+- **Resumable**: Batches are committed upon verification. Completed work is never repeated.
+- **Fault-Tolerant**: Stale worker leases are automatically recovered after timeout.
+- **Concurrent**: Multiple worker processes can safely lease batches simultaneously without collisions.
+- **Auditable**: Every attempt, model receipt, cost observation, and verification failure is recorded immutably.
+
+---
 
 ## Commands
 
 | Command | Purpose |
 |---|---|
-| `setup` | Install the bundled skill and initialize a fresh harness workspace |
-| `doctor` | Check SQLite, installed CLIs, optional OpenRouter auth, and usable routes |
-| `routes` | List routes; `--refresh` contacts providers and records observations |
-| `tasks` | List current registered tasks |
-| `init` | Register a task from a preset and create one sample input |
-| `validate` | Check task and input without inference |
-| `test` | Exercise one real model batch |
-| `run` | Create and execute a bounded SQLite-backed run |
-| `resume` | Continue the stored queue by run ID |
-| `sessions` | Inspect recorded worker summaries |
-| `export` | Produce a validated `bulk_lanes_v2` packet |
-| `schema` | Print a JSON or SQLite contract |
-| `serve` | Start the typed MCP server |
+| `setup` | Bootstrap a portable workspace with bundled skills and SQLite database |
+| `doctor` | Check SQLite, installed CLIs, provider authentication, and available routes |
+| `routes` | List or refresh discovered model routes (`--refresh`) |
+| `tasks` | List registered task definitions |
+| `init` | Create a typed task from a preset (`classify`, `extract`, `triage`, `summarize`) |
+| `validate` | Check task schema and input formatting without inference |
+| `test` | Run one real batch through candidate models |
+| `run` | Create and execute a SQLite-backed resumable run |
+| `resume` | Resume an unfinished run from its SQLite queue |
+| `status` | Show real-time progress, attempts, and route stats (`--watch`) |
+| `eval` | Benchmark routes on sample inputs and update route ranking priors |
+| `sessions` | Inspect recorded worker sessions and audit logs |
+| `export` | Export a validated packet or CSV (`--format csv\|json`) |
+| `schema` | Print admitted JSON Schemas or database contracts |
+| `serve` | Run the Model Context Protocol (MCP) server over stdio |
 
-Add `--json` for stable machine output.
+Pass `--json` to any command for machine-readable JSON output.
 
-Each packet embeds the exact closed `TaskSpec` and binds it to `task_revision`. Loading or exporting the packet revalidates every record's `claims` against that task, along with the run ID, input SHA-256 digest, canonical evidence, admitted receipts, and audit counts.
+---
 
-## Normal CLI execution
+## MCP Server
 
-OpenCode runs through the installed `opencode` command and uses its normal authentication. A temporary task-local config denies model tool permissions, defines no task MCP servers, and disables sharing.
-
-OpenRouter is optional. Costs are taken only from provider data or receipts; a route name containing `free` is only a candidate. Packaged route data is imported disabled as discovery hints. A fresh provider observation is required before any route enters the zero-price ladder.
-
-## Data and provider boundary
-
-`test`, `run`, and `resume` send the selected source slices and task instructions to the chosen model provider. Do not process private, regulated, licensed, or customer data unless that provider and account are approved for it.
-
-The software is MIT-licensed and free to use. Model providers are separate services with their own accounts, terms, rate limits, availability, and pricing. An observed-zero route is evidence about the reported price at one time; it is not a promise that a provider will remain free.
-
-## MCP
+`bulk-lanes` includes a Model Context Protocol (MCP) server for integration into Cursor, Claude Desktop, Antigravity, and other agent environments:
 
 ```json
 {
   "mcpServers": {
     "bulk-lanes": {
       "command": "bulk-lanes",
-      "args": ["serve", "--workspace-root", "/absolute/workspace"]
+      "args": ["serve", "--workspace-root", "/absolute/path/to/workspace"]
     }
   }
 }
 ```
 
-The MCP database defaults to `<workspace>/bulk-lanes.db`. All MCP-controlled task, input, database, and packet paths must stay below the workspace root.
+---
 
-## Verify
+## Verification & Testing
+
+Run the test suite:
 
 ```bash
 pytest -q
 ```
 
-The wheel contains the SQLite migration, five public JSON Schemas, and the complete companion skill. A source checkout is needed only to develop or run the tests.
+All core components (Bayesian route scoring, SQLite control plane, rate limit cooldowns, OpenAI-compatible provider, CSV IO, real-time status monitoring, and route evals) are covered by automated unit and integration tests.
+
+---
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Report security issues through the repository's [private vulnerability reporting](https://github.com/NatesVibeCode/bulk-lanes/security/advisories/new), not a public issue.
+MIT. See [LICENSE](LICENSE).

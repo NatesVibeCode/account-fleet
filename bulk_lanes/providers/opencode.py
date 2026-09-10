@@ -39,7 +39,8 @@ class OpenCodeProvider(BaseProvider):
         prompt: str,
         system_prompt: Optional[str] = None,
         timeout_sec: int = 120,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        policy: Optional[Any] = None,
     ) -> Tuple[bool, Optional[str], dict]:
         started = time.time()
         rid = uuid.uuid4().hex
@@ -53,6 +54,8 @@ class OpenCodeProvider(BaseProvider):
             "cost_status": "unknown",
             "usage": None,
             "error": None,
+            "error_type": None,
+            "retry_after": None,
             "duration_seconds": None,
         }
 
@@ -108,6 +111,11 @@ class OpenCodeProvider(BaseProvider):
             if code != 0 or not finished or not texts:
                 err_msg = last_err or (stderr or stdout)[-500:] or f"Exit code {code}"
                 receipt["error"] = err_msg
+                if "429" in err_msg.lower() or "rate limit" in err_msg.lower():
+                    receipt["error_type"] = "rate_limit"
+                    receipt["retry_after"] = 10.0
+                else:
+                    receipt["error_type"] = "inference_error"
                 receipt["duration_seconds"] = time.time() - started
                 return False, None, receipt
 
@@ -122,5 +130,6 @@ class OpenCodeProvider(BaseProvider):
 
         except Exception as e:
             receipt["error"] = str(e)
+            receipt["error_type"] = "inference_error"
             receipt["duration_seconds"] = time.time() - started
             return False, None, receipt

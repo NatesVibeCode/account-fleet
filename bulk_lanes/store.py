@@ -6,17 +6,33 @@ import json
 import os
 import re
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .models import ExtractedItem, ID_PATTERN, PackedBatch, ProviderReceipt, RouteInfo, TaskSpec, WorkerSessionRecord
+from .models import (
+    BatchStatusCounts,
+    ExtractedItem,
+    ID_PATTERN,
+    PackedBatch,
+    ProviderReceipt,
+    RouteEvalReport,
+    RouteEvalResult,
+    RouteInfo,
+    RoutePolicy,
+    RouteStatusSummary,
+    RunStatusReport,
+    TaskSpec,
+    WorkerSessionRecord,
+)
 
 
 SCHEMA_VERSION = "1"
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "migrations" / "001_control_plane.sql"
 SCHEMA_SQL = SCHEMA_PATH.read_text()
+MIGRATION_002_PATH = Path(__file__).resolve().parent / "migrations" / "002_intelligence_and_policy.sql"
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -52,6 +68,11 @@ class BulkLanesStore:
     def migrate(self) -> None:
         with self.connect() as connection:
             connection.executescript(SCHEMA_SQL)
+            if MIGRATION_002_PATH.is_file():
+                connection.executescript(MIGRATION_002_PATH.read_text())
+            cols = [row["name"] for row in connection.execute("PRAGMA table_info(runs)").fetchall()]
+            if "policy_json" not in cols:
+                connection.execute("ALTER TABLE runs ADD COLUMN policy_json TEXT")
             connection.execute(
                 "INSERT INTO bulk_meta(key,value) VALUES('schema_version',?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -190,9 +211,11 @@ class BulkLanesStore:
         max_attempts: int,
         batch_size: int,
         output_path: str,
+        policy: RoutePolicy | None = None,
     ) -> None:
         if not re.fullmatch(ID_PATTERN, run_id) or len(run_id) > 128:
             raise ValueError("run_id must use 1-128 letters, numbers, dots, underscores, or hyphens")
+        policy_json = json.dumps(policy.model_dump(mode="json"), separators=(",", ":")) if policy else None
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
@@ -208,9 +231,9 @@ class BulkLanesStore:
             connection.execute(
                 """INSERT INTO runs(
                     run_id,task_revision_id,input_path,input_digest,status,total_items,max_attempts,
-                    attempts_used,batch_size,output_path,created_at
-                ) VALUES(?,?,?,?, 'running',?,?,0,?,?,?)""",
-                (run_id, task_revision_id, input_path, input_digest, total_items, max_attempts, batch_size, output_path, now_iso()),
+                    attempts_used,batch_size,output_path,policy_json,created_at
+                ) VALUES(?,?,?,?, 'running',?,?,0,?,?,?,?)""",
+                (run_id, task_revision_id, input_path, input_digest, total_items, max_attempts, batch_size, output_path, policy_json, now_iso()),
             )
 
     def enqueue_batches(self, run_id: str, batches: list[dict[str, Any]], max_attempts_per_batch: int) -> None:
@@ -437,6 +460,7 @@ class BulkLanesStore:
                 "completed_at": row["completed_at"],
             }
         task = self.get_task_revision(str(run["task_revision_id"]))
+        policy_data = json.loads(run["policy_json"]) if "policy_json" in run.keys() and run["policy_json"] else None
         return {
             "format_version": "bulk_lanes_run_v1",
             "run_id": run["run_id"], "created_at": run["created_at"], "finished_at": run["finished_at"],
@@ -445,6 +469,7 @@ class BulkLanesStore:
             "status": run["status"], "total_items": run["total_items"], "max_attempts": run["max_attempts"],
             "attempts_used": run["attempts_used"], "input_path": run["input_path"],
             "input_digest": run["input_digest"], "output_path": run["output_path"], "batches": batches,
+            "policy": policy_data,
             "sessions": {row["session_id"]: json.loads(row["session_json"]) for row in sessions},
             "model_runs": list(receipts.values()),
         }
@@ -456,3 +481,215 @@ class BulkLanesStore:
     def model_run_count(self, run_id: str) -> int:
         with self.connect() as connection:
             return int(connection.execute("SELECT count(*) FROM model_runs WHERE run_id=?", (run_id,)).fetchone()[0])
+
+    def release_lease(self, run_id: str, attempt_id: str, worker_id: str, reason: str = "") -> None:
+        """Release a leased batch back to pending without consuming an attempt."""
+        batch_id = attempt_id.rsplit(":", 2)[-2]
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT attempts,lease_owner,status FROM batches WHERE run_id=? AND batch_id=?",
+                (run_id, batch_id),
+            ).fetchone()
+            if row is None or row["status"] != "leased" or row["lease_owner"] != worker_id:
+                return
+            new_attempts = max(0, int(row["attempts"]) - 1)
+            connection.execute(
+                """UPDATE batches SET status='pending',attempts=?,lease_owner=NULL,leased_at=NULL,error=?
+                   WHERE run_id=? AND batch_id=?""",
+                (new_attempts, reason or None, run_id, batch_id),
+            )
+            connection.execute("UPDATE runs SET attempts_used=max(0, attempts_used-1) WHERE run_id=?", (run_id,))
+            connection.execute("DELETE FROM batch_attempts WHERE attempt_id=?", (attempt_id,))
+
+    def set_cooldown(self, route_id: str, cooldown_until: float, reason: str = "") -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """INSERT INTO route_cooldowns(route_id, cooldown_until, reason, created_at)
+                   VALUES(?,?,?,?)
+                   ON CONFLICT(route_id) DO UPDATE SET
+                   cooldown_until=excluded.cooldown_until, reason=excluded.reason, created_at=excluded.created_at""",
+                (route_id, cooldown_until, reason, now_iso()),
+            )
+
+    def get_active_cooldowns(self) -> dict[str, float]:
+        now = time.time()
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT route_id, cooldown_until FROM route_cooldowns WHERE cooldown_until > ?",
+                (now,),
+            ).fetchall()
+        return {row["route_id"]: float(row["cooldown_until"]) for row in rows}
+
+    def is_route_cooled_down(self, route_id: str) -> bool:
+        now = time.time()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM route_cooldowns WHERE route_id=? AND cooldown_until > ?",
+                (route_id, now),
+            ).fetchone()
+        return row is not None
+
+    def clear_expired_cooldowns(self) -> int:
+        now = time.time()
+        with self.connect() as connection:
+            cursor = connection.execute("DELETE FROM route_cooldowns WHERE cooldown_until <= ?", (now,))
+            return cursor.rowcount
+
+    def record_route_eval(self, eval_data: dict[str, Any]) -> None:
+        eval_id = eval_data.get("eval_id") or hashlib.sha256(f"{eval_data['task_name']}:{eval_data['route_id']}:{now_iso()}".encode()).hexdigest()[:16]
+        with self.connect() as connection:
+            connection.execute(
+                """INSERT INTO route_evaluations(
+                    eval_id, task_name, route_id, provider, total_samples, schema_pass_count,
+                    grounding_pass_count, correct_count, error_count, rate_limit_count,
+                    avg_latency_seconds, composite_score, created_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    eval_id,
+                    eval_data["task_name"],
+                    eval_data["route_id"],
+                    eval_data.get("provider", "unknown"),
+                    eval_data["total_samples"],
+                    eval_data["schema_pass_count"],
+                    eval_data["grounding_pass_count"],
+                    eval_data.get("correct_count"),
+                    eval_data["error_count"],
+                    eval_data["rate_limit_count"],
+                    eval_data["avg_latency_seconds"],
+                    eval_data["composite_score"],
+                    now_iso(),
+                ),
+            )
+
+    def get_route_evals(self, task_name: str | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM route_evaluations"
+        params = []
+        if task_name:
+            query += " WHERE task_name=?"
+            params.append(task_name)
+        query += " ORDER BY created_at DESC"
+        with self.connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_route_history_stats(self, task_name: str | None = None) -> dict[str, dict[str, Any]]:
+        query = """
+            SELECT requested_route, provider,
+                   count(*) as total,
+                   sum(case when status='complete' then 1 else 0 end) as completed,
+                   sum(case when error like '%429%' or error like '%rate limit%' then 1 else 0 end) as rate_limits,
+                   avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
+                   sum(case when cost is not null then cost else 0 end) as total_cost
+            FROM model_runs
+        """
+        params: list[Any] = []
+        if task_name:
+            query += " WHERE run_id IN (SELECT r.run_id FROM runs r JOIN task_revisions t ON t.revision_id=r.task_revision_id WHERE t.task_name=?)"
+            params.append(task_name)
+        query += " GROUP BY requested_route, provider"
+        with self.connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        stats = {}
+        for r in rows:
+            stats[r["requested_route"]] = {
+                "route_id": r["requested_route"],
+                "provider": r["provider"],
+                "total": r["total"],
+                "completed": r["completed"] or 0,
+                "rate_limits": r["rate_limits"] or 0,
+                "avg_duration": float(r["avg_duration"] or 0.0),
+                "total_cost": float(r["total_cost"] or 0.0),
+            }
+        return stats
+
+    def get_run_status(self, run_id: str) -> RunStatusReport:
+        with self.connect() as connection:
+            run = connection.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            if run is None:
+                raise KeyError(f"run not found: {run_id}")
+            task = connection.execute(
+                "SELECT task_name FROM task_revisions WHERE revision_id=?",
+                (run["task_revision_id"],),
+            ).fetchone()
+            task_name = task["task_name"] if task else "unknown"
+
+            batch_counts = {
+                row["status"]: row["count"]
+                for row in connection.execute(
+                    "SELECT status, count(*) as count FROM batches WHERE run_id=? GROUP BY status",
+                    (run_id,),
+                ).fetchall()
+            }
+            verified_items_row = connection.execute(
+                """SELECT count(distinct r.result_id) FROM current_batch_results c
+                   JOIN batch_results r ON r.result_id=c.result_id WHERE c.run_id=?""",
+                (run_id,),
+            ).fetchone()
+            verified_items = int(verified_items_row[0]) if verified_items_row else 0
+
+            route_rows = connection.execute(
+                """SELECT requested_route, provider, count(*) as attempts,
+                          sum(case when status='complete' then 1 else 0 end) as verified,
+                          sum(case when error like '%429%' or error like '%rate limit%' then 1 else 0 end) as rate_limits,
+                          avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
+                          sum(case when cost is not null then cost else 0 end) as total_cost
+                   FROM model_runs WHERE run_id=? GROUP BY requested_route, provider""",
+                (run_id,),
+            ).fetchall()
+
+            active_workers_row = connection.execute(
+                "SELECT count(distinct lease_owner) FROM batches WHERE run_id=? AND status='leased' AND lease_owner IS NOT NULL",
+                (run_id,),
+            ).fetchone()
+            active_workers = int(active_workers_row[0]) if active_workers_row else 0
+
+            err_rows = connection.execute(
+                "SELECT distinct error FROM batch_attempts WHERE run_id=? AND error IS NOT NULL ORDER BY started_at DESC LIMIT 5",
+                (run_id,),
+            ).fetchall()
+
+        total_batches = sum(batch_counts.values())
+        batches_summary = BatchStatusCounts(
+            total=total_batches,
+            verified=batch_counts.get("verified", 0),
+            pending=batch_counts.get("pending", 0),
+            leased=batch_counts.get("leased", 0),
+            failed=batch_counts.get("failed", 0),
+        )
+
+        routes_summary = []
+        total_rate_limits = 0
+        for r in route_rows:
+            attempts = r["attempts"]
+            verified = r["verified"] or 0
+            rl = r["rate_limits"] or 0
+            total_rate_limits += rl
+            rate = (verified / attempts) if attempts > 0 else 0.0
+            routes_summary.append(
+                RouteStatusSummary(
+                    route_id=r["requested_route"],
+                    provider=r["provider"],
+                    attempts=attempts,
+                    verified=verified,
+                    rate_limits=rl,
+                    success_rate=round(rate, 3),
+                    avg_latency_seconds=round(float(r["avg_duration"] or 0.0), 2),
+                    reported_cost=round(float(r["total_cost"] or 0.0), 6),
+                )
+            )
+
+        return RunStatusReport(
+            run_id=run_id,
+            status=run["status"],
+            task_name=task_name,
+            total_items=run["total_items"],
+            verified_items=verified_items,
+            batches=batches_summary,
+            attempts_used=run["attempts_used"],
+            max_attempts=run["max_attempts"],
+            rate_limits_encountered=total_rate_limits,
+            routes=routes_summary,
+            active_workers=active_workers,
+            recent_errors=[r["error"] for r in err_rows if r["error"]],
+        )

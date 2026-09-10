@@ -24,6 +24,7 @@ from .models import (
     DoctorReport,
     InputItem,
     ModelOutput,
+    RoutePolicy,
     TaskSpec,
     ValidationReport,
 )
@@ -31,6 +32,41 @@ from .packer import pack_items
 from .store import BulkLanesStore, SCHEMA_SQL, SCHEMA_VERSION, default_db_path
 from .setup import installed_skill_matches, setup_workspace, skill_destination
 from .task import load_task_spec
+
+
+def _extract_policy(args: argparse.Namespace) -> RoutePolicy | None:
+    providers = getattr(args, "provider", None)
+    exclude_providers = getattr(args, "exclude_provider", None) or []
+    routes = getattr(args, "route", None)
+    exclude_routes = getattr(args, "exclude_route", None) or []
+    zdr = bool(getattr(args, "zdr", False))
+    no_data_coll = bool(getattr(args, "no_data_collection", False))
+    max_cost_in = float(getattr(args, "max_cost_in", 0.0) or 0.0)
+    max_cost_out = float(getattr(args, "max_cost_out", 0.0) or 0.0)
+
+    if not any([providers, exclude_providers, routes, exclude_routes, zdr, no_data_coll, max_cost_in > 0, max_cost_out > 0]):
+        return None
+
+    return RoutePolicy(
+        allowed_providers=providers if providers else None,
+        excluded_providers=exclude_providers,
+        allowed_routes=routes if routes else None,
+        excluded_routes=exclude_routes,
+        zdr=zdr,
+        allow_data_collection=not no_data_coll,
+        max_cost_per_1k_input=max_cost_in,
+        max_cost_per_1k_output=max_cost_out,
+    )
+
+
+def _load_input(args: argparse.Namespace) -> list[InputItem]:
+    return load_input_items(
+        args.input,
+        id_column=getattr(args, "id_column", None),
+        text_column=getattr(args, "text_column", None),
+        title_column=getattr(args, "title_column", None),
+        uri_column=getattr(args, "uri_column", None),
+    )
 
 
 PRESETS: dict[str, dict[str, Any]] = {
@@ -149,7 +185,7 @@ def cmd_init(args: argparse.Namespace) -> None:
 def cmd_validate(args: argparse.Namespace) -> None:
     store = _store(args)
     task = _resolve_task(args.task, store)
-    items = load_input_items(args.input)
+    items = _load_input(args)
     batches = pack_items(items, task.batch_size, task.max_slice_chars)
     _emit(
         ValidationReport(valid=True, task=task.name, input_items=len(items), batches=len(batches)),
@@ -161,9 +197,10 @@ def cmd_validate(args: argparse.Namespace) -> None:
 def cmd_test(args: argparse.Namespace) -> None:
     store = _store(args)
     task = _resolve_task(args.task, store)
-    items = load_input_items(args.input)
+    items = _load_input(args)
+    policy = _extract_policy(args)
     batch = pack_items(items[: task.batch_size], task.batch_size, task.max_slice_chars)[0]
-    engine = Engine(task=task, store=store)
+    engine = Engine(task=task, store=store, policy=policy)
     ok, results, receipt, error = engine.execute_batch(batch)
     _emit(
         {"ok": ok, "results": results, "receipt": receipt or None, "error": error},
@@ -177,16 +214,18 @@ def cmd_test(args: argparse.Namespace) -> None:
 def cmd_run(args: argparse.Namespace) -> None:
     store = _store(args)
     task = _resolve_task(args.task, store)
-    items = load_input_items(args.input)
+    items = _load_input(args)
+    policy = _extract_policy(args)
     run_id = args.run_id or f"{task.name}-{int(time.time())}"
     output = Path(args.output or f"runs/{run_id}/clean_packet.json")
-    packet = Engine(task=task, store=store).run_campaign(
+    packet = Engine(task=task, store=store, policy=policy).run_campaign(
         raw_items=items,
         run_id=run_id,
         input_path=str(Path(args.input).resolve()),
         concurrency=args.sessions,
         max_attempts=args.max_attempts,
         output_packet_path=output,
+        policy=policy,
     )
     _emit(
         {"run_id": run_id, "packet": str(output), "result": packet},
@@ -221,15 +260,62 @@ def cmd_sessions(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_status(args: argparse.Namespace) -> None:
+    store = _store(args)
+    if not getattr(args, "watch", False):
+        report = store.get_run_status(args.run_id)
+        if args.json:
+            _emit(report, True)
+        else:
+            ui.print_status_dashboard(report)
+        return
+
+    try:
+        while True:
+            report = store.get_run_status(args.run_id)
+            if args.json:
+                _emit(report, True)
+            else:
+                print("\033[H\033[J", end="")
+                ui.print_status_dashboard(report)
+            if report.status in ("completed", "completed_with_failures", "budget_exhausted"):
+                break
+            time.sleep(getattr(args, "interval", 2.0))
+    except KeyboardInterrupt:
+        pass
+
+
+def cmd_eval(args: argparse.Namespace) -> None:
+    from .eval import RouteEvaluator
+
+    store = _store(args)
+    task = _resolve_task(args.task, store)
+    items = _load_input(args)
+    target_routes = [r.strip() for r in args.routes.split(",") if r.strip()] if getattr(args, "routes", None) else None
+
+    evaluator = RouteEvaluator(task=task, store=store)
+    report = evaluator.evaluate_all(
+        samples=items,
+        routes=target_routes,
+        expected_claims_key=getattr(args, "expected_claims_col", None),
+    )
+    if args.json:
+        _emit(report, True)
+    else:
+        ui.print_eval_table(report)
+
+
 def cmd_export(args: argparse.Namespace) -> None:
     store = _store(args)
     snapshot = store.run_snapshot(args.run_id)
-    output = Path(args.output or snapshot["output_path"])
-    packet = export_clean_packet(snapshot, output)
+    fmt = getattr(args, "format", "json") or "json"
+    default_name = f"runs/{args.run_id}/clean_packet.{fmt}"
+    output = Path(args.output or default_name)
+    packet = export_clean_packet(snapshot, output, export_format=fmt)
     _emit(
-        {"run_id": args.run_id, "packet": str(output), "result": packet},
+        {"run_id": args.run_id, "output": str(output), "format": fmt, "result": packet},
         args.json,
-        f"Exported {packet['total_verified_records']} verified records to {output}.",
+        f"Exported {packet['total_verified_records']} verified records to {output} (format: {fmt}).",
     )
 
 
@@ -302,6 +388,24 @@ def cmd_serve(args: argparse.Namespace) -> None:
     run_mcp_server(args.workspace_root, args.db)
 
 
+def _input_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--id-column", help="CSV column to use for item ID")
+    parser.add_argument("--text-column", help="CSV column to use for source text")
+    parser.add_argument("--title-column", help="Optional CSV column for item title")
+    parser.add_argument("--uri-column", help="Optional CSV column for source URI")
+
+
+def _policy_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--provider", action="append", help="Allow specific provider (can repeat)")
+    parser.add_argument("--exclude-provider", action="append", help="Exclude specific provider (can repeat)")
+    parser.add_argument("--route", action="append", help="Allow specific route ID (can repeat)")
+    parser.add_argument("--exclude-route", action="append", help="Exclude specific route ID (can repeat)")
+    parser.add_argument("--zdr", action="store_true", help="Require Zero Data Retention upstream")
+    parser.add_argument("--no-data-collection", action="store_true", help="Deny provider data collection")
+    parser.add_argument("--max-cost-in", type=float, default=0.0, help="Max cost per 1k input tokens (default: 0.0)")
+    parser.add_argument("--max-cost-out", type=float, default=0.0, help="Max cost per 1k output tokens (default: 0.0)")
+
+
 def _common(parser: argparse.ArgumentParser, *, json_output: bool = True, database: bool = True) -> None:
     if database:
         parser.add_argument("--db", help="SQLite control-plane path (default: ./bulk-lanes.db)")
@@ -346,11 +450,14 @@ def build_parser() -> argparse.ArgumentParser:
     validate = commands.add_parser("validate", help="Validate a task and input without inference")
     validate.add_argument("task", help="Registered task name or TaskSpec JSON path")
     validate.add_argument("--input", required=True)
+    _input_options(validate)
     _common(validate)
 
     test = commands.add_parser("test", help="Run one real inference batch")
     test.add_argument("task", help="Registered task name or TaskSpec JSON path")
     test.add_argument("--input", required=True)
+    _input_options(test)
+    _policy_options(test)
     _common(test)
 
     run = commands.add_parser("run", help="Create and execute a resumable run")
@@ -360,6 +467,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--max-attempts", type=int, default=300)
     run.add_argument("--run-id")
     run.add_argument("--output")
+    _input_options(run)
+    _policy_options(run)
     _common(run)
 
     resume = commands.add_parser("resume", help="Resume a run from its SQLite queue")
@@ -368,6 +477,20 @@ def build_parser() -> argparse.ArgumentParser:
     resume.add_argument("--output")
     _common(resume)
 
+    status = commands.add_parser("status", help="Show real-time progress, attempts, and route stats for a run")
+    status.add_argument("run_id")
+    status.add_argument("--watch", action="store_true", help="Live monitor run progress until completion")
+    status.add_argument("--interval", type=float, default=2.0, help="Watch refresh interval in seconds")
+    _common(status)
+
+    eval_cmd = commands.add_parser("eval", help="Benchmark routes against test samples and update intelligent route scores")
+    eval_cmd.add_argument("task", help="Registered task name or TaskSpec JSON path")
+    eval_cmd.add_argument("--input", required=True, help="Evaluation dataset (CSV, JSONL, or JSON)")
+    eval_cmd.add_argument("--routes", help="Optional comma-separated route IDs to test")
+    eval_cmd.add_argument("--expected-claims-col", help="Column/metadata key containing ground-truth claims")
+    _input_options(eval_cmd)
+    _common(eval_cmd)
+
     sessions = commands.add_parser("sessions", help="Inspect recorded run sessions")
     sessions.add_argument("run_id")
     _common(sessions)
@@ -375,6 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
     export = commands.add_parser("export", help="Export a validated packet from a run")
     export.add_argument("run_id")
     export.add_argument("--output")
+    export.add_argument("--format", choices=["json", "csv"], default="json", help="Output format: json or csv")
     _common(export)
 
     schema = commands.add_parser("schema", help="Print an admitted JSON Schema")
@@ -407,6 +531,8 @@ def main() -> None:
         "test": cmd_test,
         "run": cmd_run,
         "resume": cmd_resume,
+        "status": cmd_status,
+        "eval": cmd_eval,
         "sessions": cmd_sessions,
         "export": cmd_export,
         "schema": cmd_schema,

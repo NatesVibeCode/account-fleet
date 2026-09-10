@@ -120,17 +120,34 @@ class RouteCatalog:
             matched.append(r)
         return matched
 
-    def get_ladder(self, task_seed: str = "", provider: Optional[str] = None, free_only: bool = True) -> List[str]:
-        """Returns a prioritized list of route IDs distributed evenly via task_seed."""
+    def set_cooldown(self, route_id: str, duration_sec: float, reason: str = "") -> None:
+        """Temporarily cool down a route after rate limits or transient errors."""
+        self.store.set_cooldown(route_id, time.time() + duration_sec, reason)
+
+    def is_cooled_down(self, route_id: str) -> bool:
+        """Check whether a route is currently in cooldown."""
+        return self.store.is_route_cooled_down(route_id)
+
+    def get_ladder(
+        self,
+        task_seed: str = "",
+        provider: Optional[str] = None,
+        free_only: bool = True,
+        task_name: Optional[str] = None,
+        policy: Optional[Any] = None,
+    ) -> List[str]:
+        """Returns an intelligently prioritized list of route IDs based on historical performance and eval scores."""
         routes = self.get_routes(provider=provider, free_only=free_only)
         if not routes:
             return []
-        ids = [r["id"] for r in routes]
-        if not task_seed:
-            return ids
-        h = int(hashlib.sha256(task_seed.encode()).hexdigest()[:8], 16)
-        start = h % len(ids)
-        return ids[start:] + ids[:start]
+        from .scoring import filter_and_rank_routes
+        return filter_and_rank_routes(
+            routes=routes,
+            store=self.store,
+            task_name=task_name,
+            policy=policy,
+            seed=task_seed,
+        )
 
     def record_cost(self, route_id: str, reported_cost: Optional[float]):
         """Update state from provider-reported cost and stop any route that bills."""

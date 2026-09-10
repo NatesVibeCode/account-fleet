@@ -65,3 +65,41 @@ def print_sessions_table(sessions: dict):
         status = f"{GREEN}{status_raw}{RESET}" if status_raw == "completed" else f"{CYAN}{status_raw}{RESET}"
         print(f"{sid:<22} {w_id:<8} {route:<40} {items:<8} {status}")
     print()
+
+def print_status_dashboard(report):
+    status_color = GREEN if report.status == "completed" else (CYAN if report.status == "running" else YELLOW)
+    print(f"\n{BOLD}Run:{RESET} {report.run_id} ({BOLD}Task:{RESET} {report.task_name}) - [{status_color}{report.status.upper()}{RESET}]")
+    
+    items_pct = (report.verified_items / report.total_items * 100) if report.total_items > 0 else 0
+    print(f"{BOLD}Progress:{RESET} {report.verified_items}/{report.total_items} items ({items_pct:.1f}%)")
+    
+    b = report.batches
+    print(f"{BOLD}Batches:{RESET}  {GREEN}{b.verified} verified{RESET} | {CYAN}{b.leased} leased{RESET} | {YELLOW}{b.pending} pending{RESET} | {RED}{b.failed} failed{RESET} (total: {b.total})")
+    print(f"{BOLD}Attempts:{RESET} {report.attempts_used} / {report.max_attempts} budget used ({report.rate_limits_encountered} rate-limit 429s absorbed)")
+    
+    if report.routes:
+        print(f"\n{BOLD}{'ROUTE ID':<42} {'PROVIDER':<12} {'VERIFIED/ATTEMPTS':<18} {'PASS RATE':<11} {'429s':<6} {'LATENCY'}{RESET}")
+        print("-" * 96)
+        for r in report.routes:
+            rate_str = f"{r.success_rate * 100:.1f}%"
+            ratio = f"{r.verified}/{r.attempts}"
+            lat_str = f"{r.avg_latency_seconds:.2f}s"
+            print(f"{r.route_id:<42} {r.provider:<12} {ratio:<18} {rate_str:<11} {r.rate_limits:<6} {lat_str}")
+
+    if report.recent_errors:
+        print(f"\n{YELLOW}{BOLD}Recent Alerts / Errors:{RESET}")
+        for err in report.recent_errors[:4]:
+            print(f"  {DIM}•{RESET} {err[:90]}")
+    print()
+
+def print_eval_table(report):
+    print(f"\n{BOLD}Evaluation Benchmark: Task '{report.task}' ({report.samples} test samples){RESET}")
+    print(f"{BOLD}{'ROUTE ID':<42} {'PROVIDER':<12} {'SCORE':<8} {'SCHEMA %':<10} {'GROUND %':<10} {'429s':<6} {'LATENCY'}{RESET}")
+    print("-" * 96)
+    for r in report.routes:
+        score_str = f"{r.composite_score:.3f}"
+        schema_pct = f"{r.schema_pass_rate * 100:.1f}%"
+        ground_pct = f"{r.grounding_pass_rate * 100:.1f}%"
+        score_color = GREEN if r.composite_score >= 0.75 else (YELLOW if r.composite_score >= 0.4 else RED)
+        print(f"{r.route_id:<42} {r.provider:<12} {score_color}{score_str:<8}{RESET} {schema_pct:<10} {ground_pct:<10} {r.rate_limit_count:<6} {r.avg_latency_seconds:.2f}s")
+    print()

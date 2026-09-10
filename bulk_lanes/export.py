@@ -1,14 +1,78 @@
-"""Air-gap boundary packet exporter."""
+"""Air-gap boundary packet and CSV exporter."""
+import csv
 import json
 import time
 from pathlib import Path
-from .models import CleanPacket, ExtractedItem, ProviderReceipt, TaskSpec
+from .models import CleanPacket, ExtractedItem, ProviderReceipt, RoutePolicy, TaskSpec
+
+
+def export_clean_csv(
+    run_data: dict,
+    output_path: Path,
+) -> Path:
+    """Project verified records into a frictionless tabular CSV format."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    verified_records: list[ExtractedItem] = []
+    task = TaskSpec.model_validate(run_data["task"])
+
+    for b in run_data.get("batches", {}).values():
+        if b.get("status") == "verified" and b.get("result"):
+            results = b["result"]
+            if isinstance(results, list):
+                validated = [ExtractedItem.model_validate(item) for item in results]
+            elif isinstance(results, dict) and "items" in results:
+                validated = [ExtractedItem.model_validate(item) for item in results["items"]]
+            else:
+                continue
+            for item in validated:
+                task.validate_claims(item.claims)
+            verified_records.extend(validated)
+
+    # Determine all unique claim keys
+    claim_keys: list[str] = []
+    if task.claims_schema and "properties" in task.claims_schema:
+        claim_keys = list(task.claims_schema["properties"].keys())
+    for rec in verified_records:
+        for k in rec.claims.keys():
+            if k not in claim_keys:
+                claim_keys.append(k)
+
+    fieldnames = ["item_id", "source_uri", "source_digest"]
+    fieldnames.extend([f"claim_{k}" for k in claim_keys])
+    fieldnames.extend(["quote_count", "primary_quote_text", "primary_quote_slice"])
+
+    with open(output_path, mode="w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for rec in verified_records:
+            row = {
+                "item_id": rec.item_id,
+                "source_uri": rec.source_uri or "",
+                "source_digest": rec.source_digest,
+                "quote_count": len(rec.quotes),
+                "primary_quote_text": rec.quotes[0].text if rec.quotes else "",
+                "primary_quote_slice": rec.quotes[0].slice_id if rec.quotes else "",
+            }
+            for k in claim_keys:
+                val = rec.claims.get(k)
+                if isinstance(val, (dict, list)):
+                    row[f"claim_{k}"] = json.dumps(val, ensure_ascii=False)
+                elif val is not None:
+                    row[f"claim_{k}"] = str(val)
+                else:
+                    row[f"claim_{k}"] = ""
+            writer.writerow(row)
+
+    return output_path
+
 
 def export_clean_packet(
     run_data: dict,
-    output_path: Path
+    output_path: Path,
+    export_format: str = "json",
 ) -> dict:
-    """Validate and serialize verified records into a closed packet."""
+    """Validate and serialize verified records into a closed packet or CSV."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     verified_records: list[ExtractedItem] = []
@@ -44,6 +108,8 @@ def export_clean_packet(
     )
     total_cost = sum(receipt.cost for receipt in receipts if receipt.cost is not None)
 
+    policy = RoutePolicy.model_validate(run_data["policy"]) if run_data.get("policy") else None
+
     packet_model = CleanPacket.model_validate({
         "format_version": "bulk_lanes_v2",
         "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -64,8 +130,13 @@ def export_clean_packet(
         },
         "records": verified_records,
         "receipts": receipts,
+        "policy": policy,
     })
     packet = packet_model.model_dump(mode="json", by_alias=True)
 
-    output_path.write_text(json.dumps(packet, indent=2))
+    if export_format == "csv" or output_path.suffix.lower() == ".csv":
+        export_clean_csv(run_data, output_path)
+    else:
+        output_path.write_text(json.dumps(packet, indent=2))
+
     return packet

@@ -210,6 +210,38 @@
           ],
           "default": null,
           "title": "Duration Seconds"
+        },
+        "error_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "rate_limit",
+                "transient_http",
+                "inference_error",
+                "auth_error",
+                "timeout"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Type"
+        },
+        "retry_after": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After"
         }
       },
       "required": [
@@ -256,6 +288,87 @@
         "text"
       ],
       "title": "QuoteRef",
+      "type": "object"
+    },
+    "RoutePolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_providers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional allowlist of provider names",
+          "title": "Allowed Providers"
+        },
+        "excluded_providers": {
+          "description": "Blocklist of provider names",
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Providers",
+          "type": "array"
+        },
+        "allowed_routes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional allowlist of route IDs",
+          "title": "Allowed Routes"
+        },
+        "excluded_routes": {
+          "description": "Blocklist of route IDs",
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Routes",
+          "type": "array"
+        },
+        "zdr": {
+          "default": false,
+          "description": "Enforce Zero Data Retention on upstream providers",
+          "title": "Zdr",
+          "type": "boolean"
+        },
+        "allow_data_collection": {
+          "default": true,
+          "description": "Whether providers may collect request data",
+          "title": "Allow Data Collection",
+          "type": "boolean"
+        },
+        "max_cost_per_1k_input": {
+          "default": 0.0,
+          "description": "Max allowed cost per 1k input tokens",
+          "minimum": 0,
+          "title": "Max Cost Per 1K Input",
+          "type": "number"
+        },
+        "max_cost_per_1k_output": {
+          "default": 0.0,
+          "description": "Max allowed cost per 1k output tokens",
+          "minimum": 0,
+          "title": "Max Cost Per 1K Output",
+          "type": "number"
+        }
+      },
+      "title": "RoutePolicy",
       "type": "object"
     },
     "TaskSpec": {
@@ -388,6 +501,17 @@
       },
       "title": "Receipts",
       "type": "array"
+    },
+    "policy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RoutePolicy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

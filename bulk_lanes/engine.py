@@ -7,11 +7,10 @@ from pydantic import ValidationError
 from .catalog import RouteCatalog
 from .export import export_clean_packet
 from .grounding import normalize_grounding
-from .models import CandidateModelOutput, InputItem, PackedBatch, ProviderReceipt, TaskSpec
+from .models import CandidateModelOutput, InputItem, PackedBatch, ProviderReceipt, RoutePolicy, TaskSpec
 from .packer import pack_items
 from .providers.base import clean_llm_json
-from .providers.opencode import OpenCodeProvider
-from .providers.openrouter import OpenRouterProvider
+from .providers.registry import ProviderRegistry
 from .sessions import SessionPool, WorkerSession
 from .store import BulkLanesStore, digest_json
 
@@ -21,14 +20,32 @@ class Engine:
         task: TaskSpec,
         catalog: Optional[RouteCatalog] = None,
         store: BulkLanesStore | None = None,
-        max_attempts_per_batch: int = 3
+        max_attempts_per_batch: int = 3,
+        policy: Optional[RoutePolicy] = None,
+        registry: Optional[ProviderRegistry] = None,
     ):
         self.task = task
         self.store = store or (catalog.store if catalog else BulkLanesStore())
         self.catalog = catalog or RouteCatalog(db_path=self.store.path)
-        self.opencode_prov = OpenCodeProvider()
-        self.openrouter_prov = OpenRouterProvider()
         self.max_attempts_per_batch = max_attempts_per_batch
+        self.policy = policy
+        self.registry = registry or ProviderRegistry()
+
+    @property
+    def opencode_prov(self):
+        return self.registry.get("opencode")
+
+    @opencode_prov.setter
+    def opencode_prov(self, val):
+        self.registry.register("opencode", val)
+
+    @property
+    def openrouter_prov(self):
+        return self.registry.get("openrouter")
+
+    @openrouter_prov.setter
+    def openrouter_prov(self, val):
+        self.registry.register("openrouter", val)
 
     def execute_batch(
         self,
@@ -62,8 +79,13 @@ class Engine:
 
         user_content = self.task.render_prompt(simplified_items)
 
-        # Get route ladder; prioritize session assigned route if provided
-        ladder = self.catalog.get_ladder(task_seed=batch_id, free_only=True)
+        # Get route ladder with intelligent ranking and active policy filtering
+        ladder = self.catalog.get_ladder(
+            task_seed=batch_id,
+            free_only=True,
+            task_name=self.task.name,
+            policy=self.policy,
+        )
         if session and session.route_id in ladder:
             ladder = [session.route_id] + [r for r in ladder if r != session.route_id]
 
@@ -72,23 +94,29 @@ class Engine:
             ladder = ladder[start:] + ladder[:start]
 
         if not ladder:
-            return False, None, {}, "No enabled route has observed zero pricing."
+            return False, None, {}, "No enabled route has observed zero pricing or matches active policy."
 
         last_err = "No attempts made"
         last_receipt = {}
+        routes_by_id = {r["id"]: r for r in self.catalog.data.get("routes", [])}
 
         attempt_limit = route_attempt_limit or self.max_attempts_per_batch
         for route_id in ladder[:attempt_limit]:
-            if route_id.startswith("openrouter/") or "openrouter" in route_id:
-                provider = self.openrouter_prov
-            else:
-                provider = self.opencode_prov
+            route_info = routes_by_id.get(route_id)
+            provider_hint = route_info.get("provider") if route_info else None
+            provider = self.registry.resolve(provider_hint, route_id)
+
+            import inspect
+            prompt_kwargs: dict[str, Any] = {"session_id": session_id}
+            sig = inspect.signature(provider.run_prompt)
+            if "policy" in sig.parameters:
+                prompt_kwargs["policy"] = self.policy
 
             ok, response_text, receipt = provider.run_prompt(
                 route_id=route_id,
                 prompt=user_content,
                 system_prompt=self.task.instructions,
-                session_id=session_id
+                **prompt_kwargs,
             )
             last_receipt = receipt
 
@@ -102,6 +130,16 @@ class Engine:
 
             if not ok:
                 last_err = receipt.get("error", "Unknown provider error")
+                error_type = receipt.get("error_type")
+                retry_after = receipt.get("retry_after") or 10.0
+
+                if error_type in ("rate_limit", "transient_http"):
+                    # Temporarily cool down route without burning batch attempt
+                    self.catalog.set_cooldown(route_id, retry_after, reason=f"{error_type}: {last_err}")
+                    if session:
+                        session.record_error(f"[{route_id}] Cooldown {retry_after}s applied: {last_err}")
+                    continue
+
                 if session:
                     session.record_error(f"[{route_id}] {last_err}")
                 continue
@@ -159,9 +197,12 @@ class Engine:
         input_path: str,
         concurrency: int = 4,
         max_attempts: int = 300,
-        output_packet_path: Optional[Path] = None
+        output_packet_path: Optional[Path] = None,
+        policy: Optional[RoutePolicy] = None,
     ) -> dict:
         """Register a campaign in SQLite, then execute its leased batches."""
+        if policy:
+            self.policy = policy
         batches = pack_items(raw_items, batch_size=self.task.batch_size, max_slice_chars=self.task.max_slice_chars)
         task_revision = self.store.register_task(self.task)
         canonical_input = [
@@ -178,6 +219,7 @@ class Engine:
             max_attempts=max_attempts,
             batch_size=self.task.batch_size,
             output_path=str(output_path),
+            policy=self.policy,
         )
         self.store.enqueue_batches(run_id, batches, self.max_attempts_per_batch)
         return self.resume_campaign(run_id, concurrency=concurrency, output_packet_path=output_path)
@@ -190,10 +232,18 @@ class Engine:
     ) -> dict:
         """Resume pending SQLite queue work without reconstructing it from input files."""
         self.task = self.store.get_run_task(run_id)
+        snapshot = self.store.run_snapshot(run_id)
+        if not self.policy and snapshot.get("policy"):
+            self.policy = RoutePolicy.model_validate(snapshot["policy"])
 
-        available_free_routes = self.catalog.get_ladder(task_seed=str(time.time()), free_only=True)
+        available_free_routes = self.catalog.get_ladder(
+            task_seed=str(time.time()),
+            free_only=True,
+            task_name=self.task.name,
+            policy=self.policy,
+        )
         if not available_free_routes:
-            raise RuntimeError("No enabled route has observed zero pricing.")
+            raise RuntimeError("No enabled route has observed zero pricing or matches active policy.")
         session_pool = SessionPool(num_sessions=concurrency, routes=available_free_routes)
         sessions_list = session_pool.get_all_sessions()
 
@@ -207,7 +257,7 @@ class Engine:
                     batch,
                     session=session,
                     route_offset=lease["attempt_number"] - 1,
-                    route_attempt_limit=1,
+                    route_attempt_limit=self.max_attempts_per_batch,
                 )
                 try:
                     receipt = ProviderReceipt.model_validate(raw_receipt) if raw_receipt else None
@@ -215,6 +265,15 @@ class Engine:
                     receipt = None
                 if ok and results is not None and receipt is not None:
                     self.store.complete_batch(run_id, lease["attempt_id"], session.session_id, results, receipt)
+                elif receipt and receipt.error_type in ("rate_limit", "transient_http"):
+                    # Release lease back to pending without consuming attempt
+                    self.store.release_lease(
+                        run_id,
+                        lease["attempt_id"],
+                        session.session_id,
+                        reason=error or "Rate limit / transient error",
+                    )
+                    time.sleep(1.0)
                 else:
                     self.store.fail_batch(
                         run_id,

@@ -1,4 +1,6 @@
-"""OpenRouter API provider for free and low-cost model lanes with session tracking."""
+"""Generic OpenAI-compatible API provider supporting Ollama, LM Studio, vLLM, Groq, etc."""
+from __future__ import annotations
+
 import os
 import time
 import uuid
@@ -6,13 +8,33 @@ from typing import Optional, Tuple
 import httpx
 from .base import BaseProvider
 
-class OpenRouterError(Exception):
-    pass
 
-class OpenRouterProvider(BaseProvider):
-    def __init__(self, api_key: Optional[str] = None, base_url: str = "https://openrouter.ai/api/v1"):
-        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
-        self.base_url = base_url.rstrip("/")
+def _parse_retry_after(header_val: Optional[str]) -> float:
+    if not header_val:
+        return 10.0
+    try:
+        return max(1.0, float(header_val))
+    except (ValueError, TypeError):
+        return 10.0
+
+
+class OpenAICompatibleProvider(BaseProvider):
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        provider_name: str = "openai_compatible",
+    ):
+        configured_url = (
+            base_url
+            or os.environ.get("OPENAI_COMPATIBLE_BASE_URL")
+            or os.environ.get("OLLAMA_BASE_URL")
+            or os.environ.get("LMSTUDIO_BASE_URL")
+            or "http://localhost:11434/v1"
+        )
+        self.base_url = configured_url.rstrip("/")
+        self.api_key = api_key or os.environ.get("OPENAI_COMPATIBLE_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+        self.provider_name = provider_name
 
     def run_prompt(
         self,
@@ -25,18 +47,22 @@ class OpenRouterProvider(BaseProvider):
     ) -> Tuple[bool, Optional[str], dict]:
         started = time.time()
         rid = uuid.uuid4().hex
-        
-        # Route id can be "openrouter/foo/bar:free" or "foo/bar:free"
-        model_name = route_id.removeprefix("openrouter/")
-        
+
+        # Strip provider prefix if present (e.g., ollama/llama3 -> llama3, openai/gpt-4o -> gpt-4o)
+        model_name = route_id
+        for prefix in ("openai_compatible/", "ollama/", "lmstudio/", "vllm/", "groq/", "cerebras/", "openai/"):
+            if model_name.startswith(prefix):
+                model_name = model_name[len(prefix):]
+                break
+
         receipt = {
             "id": rid,
             "session_id": session_id,
-            "provider": "openrouter",
+            "provider": self.provider_name,
             "requested_route": route_id,
             "status": "failed",
-            "cost": None,
-            "cost_status": "unknown",
+            "cost": 0.0,
+            "cost_status": "reported_zero",
             "usage": None,
             "error": None,
             "error_type": None,
@@ -44,17 +70,9 @@ class OpenRouterProvider(BaseProvider):
             "duration_seconds": None,
         }
 
-        if not self.api_key:
-            receipt["error"] = "OPENROUTER_API_KEY is not set"
-            receipt["error_type"] = "auth_error"
-            receipt["duration_seconds"] = time.time() - started
-            return False, None, receipt
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "X-Title": "bulk-lanes"
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         messages = []
         if system_prompt:
@@ -67,29 +85,13 @@ class OpenRouterProvider(BaseProvider):
             "temperature": 0.1,
         }
 
-        provider_cfg = {}
-        if policy:
-            if getattr(policy, "zdr", False) or not getattr(policy, "allow_data_collection", True):
-                provider_cfg["data_collection"] = "deny"
-            if getattr(policy, "zdr", False):
-                provider_cfg["zdr"] = True
-            if getattr(policy, "allowed_providers", None):
-                provider_cfg["order"] = policy.allowed_providers
-            if getattr(policy, "excluded_providers", None):
-                provider_cfg["ignore"] = policy.excluded_providers
-        if provider_cfg:
-            payload["provider"] = provider_cfg
-
         try:
             with httpx.Client(timeout=timeout_sec) as client:
-                resp = client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
-                
+                url = f"{self.base_url}/chat/completions"
+                resp = client.post(url, headers=headers, json=payload)
+
                 if resp.status_code == 429:
-                    retry_hdr = resp.headers.get("retry-after")
-                    try:
-                        retry_sec = max(1.0, float(retry_hdr)) if retry_hdr else 10.0
-                    except (ValueError, TypeError):
-                        retry_sec = 10.0
+                    retry_sec = _parse_retry_after(resp.headers.get("retry-after"))
                     receipt["error"] = f"Rate limited (429): {resp.text[:300]}"
                     receipt["error_type"] = "rate_limit"
                     receipt["retry_after"] = retry_sec
@@ -120,10 +122,8 @@ class OpenRouterProvider(BaseProvider):
                 text = choices[0].get("message", {}).get("content", "")
                 usage = data.get("usage", {})
                 receipt["usage"] = usage
-                
-                reported_cost = usage.get("cost") if isinstance(usage, dict) else None
-                if reported_cost is None:
-                    reported_cost = data.get("cost")
+
+                reported_cost = data.get("cost") or (usage.get("cost") if isinstance(usage, dict) else None)
                 if isinstance(reported_cost, (int, float)):
                     receipt["cost"] = float(reported_cost)
                     receipt["cost_status"] = "reported_zero" if reported_cost == 0 else "billed"

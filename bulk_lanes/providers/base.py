@@ -25,7 +25,8 @@ class BaseProvider(ABC):
         prompt: str,
         system_prompt: Optional[str] = None,
         timeout_sec: int = 120,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        policy: Optional[Any] = None,
     ) -> Tuple[bool, Optional[str], dict]:
         """Executes a prompt in a session. Returns (success, text_response, receipt_dict)."""
         pass

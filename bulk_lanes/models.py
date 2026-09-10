@@ -228,6 +228,17 @@ class TaskSpec(ClosedModel):
         return f"{self.instructions}\nReturn JSON only. Copy exact quote text from one named slice; offsets are optional.\n{json.dumps(payload, ensure_ascii=False)}"
 
 
+class RoutePolicy(ClosedModel):
+    allowed_providers: list[str] | None = Field(default=None, description="Optional allowlist of provider names")
+    excluded_providers: list[str] = Field(default_factory=list, description="Blocklist of provider names")
+    allowed_routes: list[str] | None = Field(default=None, description="Optional allowlist of route IDs")
+    excluded_routes: list[str] = Field(default_factory=list, description="Blocklist of route IDs")
+    zdr: bool = Field(default=False, description="Enforce Zero Data Retention on upstream providers")
+    allow_data_collection: bool = Field(default=True, description="Whether providers may collect request data")
+    max_cost_per_1k_input: float = Field(default=0.0, ge=0, description="Max allowed cost per 1k input tokens")
+    max_cost_per_1k_output: float = Field(default=0.0, ge=0, description="Max allowed cost per 1k output tokens")
+
+
 class ProviderReceipt(ClosedModel):
     id: str
     session_id: str | None = None
@@ -239,6 +250,8 @@ class ProviderReceipt(ClosedModel):
     usage: dict[str, JsonValue] | None = None
     error: str | None = None
     duration_seconds: float | None = Field(default=None, ge=0)
+    error_type: Literal["rate_limit", "transient_http", "inference_error", "auth_error", "timeout"] | None = None
+    retry_after: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def consistent_cost(self) -> "ProviderReceipt":
@@ -280,6 +293,7 @@ class CleanPacket(ClosedModel):
     audit: PacketAudit
     records: list[ExtractedItem]
     receipts: list[ProviderReceipt]
+    policy: RoutePolicy | None = None
 
     @model_validator(mode="after")
     def consistent_record_count(self) -> "CleanPacket":
@@ -410,3 +424,60 @@ class SetupReport(ClosedModel):
     stdio_server: StdioServerConfig
     route_refresh: dict[str, int | str] | None = None
     next_commands: list[list[str]]
+
+
+class BatchStatusCounts(ClosedModel):
+    total: int = Field(default=0, ge=0)
+    verified: int = Field(default=0, ge=0)
+    pending: int = Field(default=0, ge=0)
+    leased: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+
+
+class RouteStatusSummary(ClosedModel):
+    route_id: str
+    provider: str
+    attempts: int = Field(default=0, ge=0)
+    verified: int = Field(default=0, ge=0)
+    rate_limits: int = Field(default=0, ge=0)
+    success_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    avg_latency_seconds: float = Field(default=0.0, ge=0.0)
+    reported_cost: float = Field(default=0.0, ge=0.0)
+
+
+class RunStatusReport(ClosedModel):
+    run_id: str
+    status: str
+    task_name: str
+    total_items: int = Field(default=0, ge=0)
+    verified_items: int = Field(default=0, ge=0)
+    batches: BatchStatusCounts
+    attempts_used: int = Field(default=0, ge=0)
+    max_attempts: int = Field(default=0, ge=0)
+    rate_limits_encountered: int = Field(default=0, ge=0)
+    routes: list[RouteStatusSummary] = Field(default_factory=list)
+    active_workers: int = Field(default=0, ge=0)
+    recent_errors: list[str] = Field(default_factory=list)
+
+
+class RouteEvalResult(ClosedModel):
+    route_id: str
+    provider: str
+    total_samples: int = Field(ge=0)
+    schema_pass_count: int = Field(ge=0)
+    grounding_pass_count: int = Field(ge=0)
+    correct_count: int | None = Field(default=None, ge=0)
+    rate_limit_count: int = Field(default=0, ge=0)
+    error_count: int = Field(default=0, ge=0)
+    schema_pass_rate: float = Field(ge=0.0, le=1.0)
+    grounding_pass_rate: float = Field(ge=0.0, le=1.0)
+    accuracy: float | None = Field(default=None, ge=0.0, le=1.0)
+    avg_latency_seconds: float = Field(ge=0.0)
+    composite_score: float = Field(ge=0.0, le=1.0)
+
+
+class RouteEvalReport(ClosedModel):
+    task: str
+    samples: int = Field(ge=0)
+    evaluated_at: str
+    routes: list[RouteEvalResult] = Field(default_factory=list)
