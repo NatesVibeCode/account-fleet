@@ -173,10 +173,10 @@ class Engine:
             if not ok:
                 last_err = receipt.get("error", "Unknown provider error")
                 error_type = receipt.get("error_type")
-                retry_after = receipt.get("retry_after") or 10.0
+                retry_after = receipt.get("retry_after")
 
                 if error_type in ("rate_limit", "transient_http"):
-                    # Temporarily cool down route without burning batch attempt budget
+                    # Temporarily cool down route without burning batch attempt budget (adaptive if retry_after is None)
                     self.catalog.set_cooldown(route_id, retry_after, reason=f"{error_type}: {last_err}")
                     attempt_record.update({
                         "transport_status": error_type,
@@ -186,7 +186,8 @@ class Engine:
                     if self.store:
                         self.store.record_inference_attempt(attempt_record)
                     if session:
-                        session.record_error(f"[{route_id}] Cooldown {retry_after}s applied: {last_err}")
+                        dur_str = f"{retry_after}s" if retry_after is not None else "adaptive"
+                        session.record_error(f"[{route_id}] Cooldown ({dur_str}) applied: {last_err}")
                     continue
 
                 attempt_record.update({

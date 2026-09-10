@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import re
 import sqlite3
 import time
@@ -543,6 +544,84 @@ class FreeFleetStore:
         with self.connect() as connection:
             cursor = connection.execute("DELETE FROM route_cooldowns WHERE cooldown_until <= ?", (now,))
             return cursor.rowcount
+
+    def get_consecutive_rate_limits(self, route_id: str) -> int:
+        """Count consecutive recent rate limits for a route before a verified success."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT outcome, verified, error_type
+                   FROM inference_attempts
+                   WHERE route_id = ?
+                   ORDER BY created_at DESC, rowid DESC
+                   LIMIT 20""",
+                (route_id,),
+            ).fetchall()
+        consecutive = 0
+        for r in rows:
+            if r["error_type"] == "rate_limit" or r["outcome"] == "rate_limited":
+                consecutive += 1
+            elif r["verified"] == 1 or r["outcome"] == "verified":
+                break
+        return consecutive
+
+    def record_rate_limit_with_adaptive_backoff(
+        self,
+        route_id: str,
+        reason: str = "",
+        base_delays: list[float] | None = None,
+        max_delay: float = 600.0,
+        jitter: bool = True,
+    ) -> float:
+        """Escalate cooldown using exponential backoff based on consecutive rate limits.
+
+        Default progression: 30s -> 60s -> 180s -> 600s + jitter.
+        Returns the computed cooldown expiry timestamp.
+        """
+        delays = base_delays or [30.0, 60.0, 180.0, 600.0]
+        consecutive = self.get_consecutive_rate_limits(route_id) + 1
+        delay = delays[min(consecutive - 1, len(delays) - 1)]
+        if delay > max_delay:
+            delay = max_delay
+        if jitter:
+            delay += random.uniform(0.0, 5.0)
+
+        cooldown_until = time.time() + delay
+        reason_msg = reason or f"Rate limited: 429 (consecutive: {consecutive})"
+        self.set_cooldown(route_id, cooldown_until, reason_msg)
+        return cooldown_until
+
+    def get_active_cooldown_details(self) -> list[dict[str, Any]]:
+        """Return detailed records of all currently cooling routes."""
+        self.clear_expired_cooldowns()
+        now = time.time()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT route_id, cooldown_until, reason, created_at
+                   FROM route_cooldowns
+                   WHERE cooldown_until > ?
+                   ORDER BY cooldown_until ASC""",
+                (now,),
+            ).fetchall()
+        return [
+            {
+                "route_id": r["route_id"],
+                "cooldown_until": float(r["cooldown_until"]),
+                "remaining_seconds": round(float(r["cooldown_until"]) - now, 1),
+                "reason": r["reason"] or "Rate limited",
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+    def clear_cooldowns(self, route_id: str | None = None) -> int:
+        """Clear active cooldown for a specific route or all routes."""
+        with self.connect() as connection:
+            if route_id:
+                cur = connection.execute("DELETE FROM route_cooldowns WHERE route_id = ?", (route_id,))
+            else:
+                cur = connection.execute("DELETE FROM route_cooldowns")
+            connection.commit()
+            return cur.rowcount
 
     def record_route_eval(self, eval_data: dict[str, Any]) -> None:
         eval_id = eval_data.get("eval_id") or hashlib.sha256(f"{eval_data['task_name']}:{eval_data['route_id']}:{now_iso()}".encode()).hexdigest()[:16]

@@ -500,3 +500,19 @@ class RouteEvalReport(ClosedModel):
     samples: int = Field(ge=0)
     evaluated_at: str
     routes: list[RouteEvalResult] = Field(default_factory=list)
+
+
+class CooldownDetail(ClosedModel):
+    route_id: str
+    cooldown_until: str
+    reason: str | None = None
+    seconds_remaining: float = Field(default=0.0, ge=0.0)
+
+
+class CooldownsReport(ClosedModel):
+    action: str
+    count: int = Field(default=0, ge=0)
+    cooldowns: list[CooldownDetail] = Field(default_factory=list)
+    cleared: int | None = None
+    route_id: str | None = None
+

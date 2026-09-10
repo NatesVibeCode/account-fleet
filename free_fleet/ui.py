@@ -32,6 +32,19 @@ def print_routes_table(routes: list):
         print(f"{rid:<45} {prov:<12} {price:<31} {status}")
     print()
 
+def print_cooldowns_table(cooldowns: list[dict]):
+    if not cooldowns:
+        info("No routes are currently cooling down. All routes are available.")
+        return
+    print(f"\n{BOLD}{'ROUTE ID':<45} {'EXPIRES IN':<14} {'REASON'}{RESET}")
+    print("-" * 80)
+    for c in cooldowns:
+        rid = c["route_id"]
+        rem = f"{YELLOW}{c['remaining_seconds']}s{RESET}"
+        reason = str(c.get("reason", "Rate limited"))[:40]
+        print(f"{rid:<45} {rem:<23} {reason}")
+    print()
+
 def print_progress(current: int, total: int, prefix: str = "", suffix: str = ""):
     percent = (current / total) * 100 if total > 0 else 0
     bar_len = 30

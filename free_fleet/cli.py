@@ -207,6 +207,23 @@ def cmd_routes(args: argparse.Namespace) -> None:
         ui.print_routes_table(routes)
 
 
+def cmd_cooldowns(args: argparse.Namespace) -> None:
+    store = _store(args)
+    if getattr(args, "clear", False):
+        route_id = getattr(args, "route", None)
+        cleared = store.clear_cooldowns(route_id=route_id)
+        msg = f"Cleared {cleared} active cooldown record(s)" + (f" for route '{route_id}'" if route_id else " for all routes")
+        _emit({"cleared": cleared, "route_id": route_id}, args.json, msg)
+        return
+
+    cooldowns = store.get_active_cooldown_details()
+    if args.json:
+        _emit({"cooldowns": cooldowns, "count": len(cooldowns)}, True)
+    else:
+        ui.banner()
+        ui.print_cooldowns_table(cooldowns)
+
+
 def cmd_tasks(args: argparse.Namespace) -> None:
     tasks = _store(args).list_tasks()
     human = "No tasks registered." if not tasks else "\n".join(
@@ -519,6 +536,11 @@ def build_parser() -> argparse.ArgumentParser:
     routes.add_argument("--refresh", action="store_true", help="Contact providers and update route observations")
     _common(routes)
 
+    cooldowns = commands.add_parser("cooldowns", help="Inspect and manage rate-limit route cooldowns")
+    cooldowns.add_argument("--clear", action="store_true", help="Clear active cooldowns")
+    cooldowns.add_argument("--route", help="Specific route ID to clear")
+    _common(cooldowns)
+
     tasks = commands.add_parser("tasks", help="List registered task definitions")
     _common(tasks)
 
@@ -607,6 +629,7 @@ def main() -> None:
     handlers = {
         "setup": cmd_setup,
         "routes": cmd_routes,
+        "cooldowns": cmd_cooldowns,
         "tasks": cmd_tasks,
         "init": cmd_init,
         "validate": cmd_validate,

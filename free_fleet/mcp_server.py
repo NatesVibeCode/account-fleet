@@ -17,6 +17,8 @@ from .models import (
     BatchTestResult,
     CandidateModelOutput,
     CleanPacket,
+    CooldownDetail,
+    CooldownsReport,
     DoctorCheck,
     DoctorReport,
     InputItem,
@@ -81,6 +83,22 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
         refresh_result = catalog.refresh_all() if refresh else None
         routes = catalog.get_routes(free_only=observed_zero_only, include_disabled=not observed_zero_only)
         return RoutesResult.model_validate({"routes": routes, "refresh": refresh_result})
+
+    @server.tool(structured_output=True)
+    def free_fleet_cooldowns(
+        action: Annotated[str, Field(pattern="^(list|clear)$", description="Action: list active cooldowns or clear cooldowns")] = "list",
+        route_id: Annotated[str | None, Field(description="Optional specific route ID to clear")] = None,
+    ) -> CooldownsReport:
+        """Inspect active rate-limit route cooldowns or clear them."""
+        if action == "clear":
+            cleared = store.clear_cooldowns(route_id=route_id)
+            return CooldownsReport(action="clear", count=cleared, cleared=cleared, route_id=route_id, cooldowns=[])
+        cooldowns = store.get_active_cooldown_details()
+        return CooldownsReport(
+            action="list",
+            count=len(cooldowns),
+            cooldowns=[CooldownDetail.model_validate(c) for c in cooldowns],
+        )
 
     @server.tool(structured_output=True)
     def free_fleet_register_task(task: TaskSpec) -> TaskRegistrationResult:

@@ -60,10 +60,11 @@ def test_mcp_tool_error_does_not_kill_server(tmp_path):
     assert responses[1]["result"]["isError"] is True
     assert responses[2]["id"] == 3
     tools = responses[2]["result"]["tools"]
-    assert len(tools) == 12
+    assert len(tools) == 13
     tool_names = {tool["name"] for tool in tools}
     assert "free_fleet_status" in tool_names
     assert "free_fleet_eval" in tool_names
+    assert "free_fleet_cooldowns" in tool_names
     assert all(tool["description"] for tool in tools)
     assert all("inputSchema" in tool and "outputSchema" in tool for tool in tools)
 

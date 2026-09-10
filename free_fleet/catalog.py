@@ -155,9 +155,17 @@ class RouteCatalog:
         self.data = self._load()
         return route
 
-    def set_cooldown(self, route_id: str, duration_sec: float, reason: str = "") -> None:
-        """Temporarily cool down a route after rate limits or transient errors."""
-        self.store.set_cooldown(route_id, time.time() + duration_sec, reason)
+    def set_cooldown(self, route_id: str, duration_sec: Optional[float] = None, reason: str = "") -> float:
+        """Temporarily cool down a route after rate limits or transient errors.
+        
+        If duration_sec is None, applies adaptive exponential backoff based on consecutive rate limits.
+        Returns the cooldown expiry timestamp.
+        """
+        if duration_sec is None:
+            return self.store.record_rate_limit_with_adaptive_backoff(route_id, reason)
+        expiry = time.time() + duration_sec
+        self.store.set_cooldown(route_id, expiry, reason)
+        return expiry
 
     def is_cooled_down(self, route_id: str) -> bool:
         """Check whether a route is currently in cooldown."""
@@ -169,6 +177,57 @@ class RouteCatalog:
         if exp:
             return max(0.0, exp - time.time())
         return 0.0
+
+    def get_route_summary(self, include_disabled: bool = True) -> list[dict[str, Any]]:
+        """Return comprehensive route catalog summary with Bayesian scores and attempt stats."""
+        routes = self.get_routes(free_only=False, include_disabled=include_disabled)
+        active_cooldowns = self.store.get_active_cooldowns()
+        now = time.time()
+
+        from .scoring import RouteScorer
+        scorer = RouteScorer(self.store)
+        history_stats = self.store.get_route_history_stats()
+        route_dicts = [r.model_dump(mode="json") if hasattr(r, "model_dump") else r for r in routes]
+        scores = scorer.score_routes(route_dicts)
+
+        summary = []
+        for r in routes:
+            rid = r["id"] if isinstance(r, dict) else r.id
+            provider = r["provider"] if isinstance(r, dict) else r.provider
+            enabled = r["enabled"] if isinstance(r, dict) else r.enabled
+            last_verified = r.get("last_verified") if isinstance(r, dict) else getattr(r, "last_verified", None)
+            stat = history_stats.get(rid, {})
+            cd_until = active_cooldowns.get(rid)
+            is_cooling = cd_until is not None and cd_until > now
+
+            status_str = "COOLING" if is_cooling else ("ACTIVE" if enabled else "DISABLED")
+            total = stat.get("total", 0)
+            completed = stat.get("completed", 0)
+            success_rate = (completed / total * 100.0) if total > 0 else None
+
+            summary.append({
+                "id": rid,
+                "provider": provider,
+                "enabled": enabled,
+                "status": status_str,
+                "is_cooling": is_cooling,
+                "cooling_seconds": round(max(0.0, cd_until - now), 1) if is_cooling else 0.0,
+                "bayesian_score": scores.get(rid, 0.5) if enabled and not is_cooling else (0.0 if is_cooling else 0.5),
+                "total_attempts": total,
+                "completed": completed,
+                "success_rate": success_rate,
+                "rate_limits": stat.get("rate_limits", 0),
+                "avg_duration": stat.get("avg_duration", 0.0),
+                "cooldown_until": cd_until,
+                "cooldown_remaining_sec": round(max(0.0, cd_until - now), 1) if is_cooling else 0.0,
+                "last_verified": last_verified,
+            })
+
+        def sort_key(x):
+            status_order = {"ACTIVE": 0, "COOLING": 1, "DISABLED": 2}.get(x["status"], 3)
+            return (status_order, -x["bayesian_score"])
+
+        return sorted(summary, key=sort_key)
 
     def refresh_from_openai_compatible(
         self,
