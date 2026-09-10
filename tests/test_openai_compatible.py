@@ -1,7 +1,7 @@
 import json
 import httpx
-from bulk_lanes.providers.openai_compatible import OpenAICompatibleProvider
-from bulk_lanes.providers.registry import ProviderRegistry
+from free_fleet.providers.openai_compatible import OpenAICompatibleProvider
+from free_fleet.providers.registry import ProviderRegistry
 
 
 def test_provider_registry_resolution():

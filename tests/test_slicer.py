@@ -1,5 +1,5 @@
 import pytest
-from bulk_lanes.slicer import slice_document
+from free_fleet.slicer import slice_document
 
 def test_slice_short_document():
     text = "Short text under 6000 chars."

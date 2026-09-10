@@ -1,8 +1,8 @@
 import json
 from argparse import Namespace
 
-from bulk_lanes import cli
-from bulk_lanes.store import BulkLanesStore
+from free_fleet import cli
+from free_fleet.store import BulkLanesStore
 
 
 def test_init_registers_task_and_writes_typed_sample(tmp_path, monkeypatch):
@@ -159,8 +159,8 @@ def test_cli_policy_flag_parsing():
 def test_export_and_status_cli(tmp_path, capsys, monkeypatch):
     monkeypatch.chdir(tmp_path)
     import csv
-    from bulk_lanes.models import ExtractedItem, PackedBatch, SourceSlice
-    from bulk_lanes.store import BulkLanesStore
+    from free_fleet.models import ExtractedItem, PackedBatch, SourceSlice
+    from free_fleet.store import BulkLanesStore
 
     db = tmp_path / "run_test.db"
     store = BulkLanesStore(db)
@@ -190,8 +190,8 @@ def test_export_and_status_cli(tmp_path, capsys, monkeypatch):
         batch_size=2,
         output_path="out.json",
     )
-    from bulk_lanes.packer import pack_items
-    from bulk_lanes.models import ProviderReceipt
+    from free_fleet.packer import pack_items
+    from free_fleet.models import ProviderReceipt
     batch = pack_items([{"item_id": "item-1", "text": "broken button error"}], batch_size=2)[0]
     store.enqueue_batches(run_id, [batch], max_attempts_per_batch=5)
     lease = store.lease_batch(run_id, "worker-1")

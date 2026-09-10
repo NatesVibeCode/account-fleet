@@ -81,7 +81,7 @@
       "type": "object"
     }
   },
-  "$id": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/candidate-output-v1.schema.json",
+  "$id": "https://raw.githubusercontent.com/NatesVibeCode/free-fleet/master/schemas/candidate-output-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {

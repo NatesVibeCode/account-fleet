@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from bulk_lanes.setup import bundled_skill_path, setup_workspace
-from bulk_lanes.store import BulkLanesStore
+from free_fleet.setup import bundled_skill_path, setup_workspace
+from free_fleet.store import BulkLanesStore
 
 
 def test_setup_installs_bundled_skill_and_database_idempotently(tmp_path):
@@ -27,7 +27,7 @@ def test_setup_installs_bundled_skill_and_database_idempotently(tmp_path):
     assert second.actions[0].status == "unchanged"
     assert Path(first.skill_path, "SKILL.md").is_file()
     assert BulkLanesStore(first.database).schema_version() == "2"
-    assert first.stdio_server.command.endswith("bulk-lanes")
+    assert first.stdio_server.command.endswith("free-fleet")
     assert first.database in first.stdio_server.args
     assert first.ready is False  # packaged route hints are not fresh price evidence
 
@@ -43,7 +43,7 @@ def test_user_scope_uses_portable_agents_directory(tmp_path):
         home=home,
         dry_run=True,
     )
-    assert report.skill_path == str(home / ".agents/skills/bulk-lanes")
+    assert report.skill_path == str(home / ".agents/skills/free-fleet")
 
 
 def test_custom_skill_root_supports_nonstandard_harness(tmp_path):
@@ -58,7 +58,7 @@ def test_custom_skill_root_supports_nonstandard_harness(tmp_path):
         home=home,
         dry_run=True,
     )
-    assert report.skill_path == str(workspace / ".any-harness/skills/bulk-lanes")
+    assert report.skill_path == str(workspace / ".any-harness/skills/free-fleet")
 
 
 def test_stdio_server_uses_current_python_environment(tmp_path, monkeypatch):
@@ -68,9 +68,9 @@ def test_stdio_server_uses_current_python_environment(tmp_path, monkeypatch):
     home.mkdir()
     workspace.mkdir()
     environment.mkdir(parents=True)
-    executable = environment / "bulk-lanes"
+    executable = environment / "free-fleet"
     executable.write_text("#!/bin/sh\n")
-    monkeypatch.setattr("bulk_lanes.setup.sys.executable", str(environment / "python"))
+    monkeypatch.setattr("free_fleet.setup.sys.executable", str(environment / "python"))
 
     report = setup_workspace(
         scope="project",
@@ -85,7 +85,7 @@ def test_stdio_server_uses_current_python_environment(tmp_path, monkeypatch):
 def test_setup_refuses_different_existing_skill_without_force(tmp_path):
     home = tmp_path / "home"
     workspace = tmp_path / "workspace"
-    destination = home / ".agents/skills/bulk-lanes"
+    destination = home / ".agents/skills/free-fleet"
     destination.mkdir(parents=True)
     (destination / "SKILL.md").write_text("different")
     workspace.mkdir()
@@ -125,6 +125,6 @@ def test_all_distributed_skill_copies_match():
     packaged = bundled_skill_path()
     repository = Path(__file__).resolve().parents[1]
     expected = {path.relative_to(packaged): path.read_bytes() for path in packaged.rglob("*") if path.is_file()}
-    for root in [repository / "skills/bulk-lanes", repository / ".agents/skills/bulk-lanes"]:
+    for root in [repository / "skills/free-fleet", repository / ".agents/skills/free-fleet"]:
         actual = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
         assert actual == expected

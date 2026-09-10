@@ -2,9 +2,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from bulk_lanes.models import ProviderReceipt, RouteInfo, TaskSpec
-from bulk_lanes.packer import pack_items
-from bulk_lanes.store import BulkLanesStore, digest_json
+from free_fleet.models import ProviderReceipt, RouteInfo, TaskSpec
+from free_fleet.packer import pack_items
+from free_fleet.store import BulkLanesStore, digest_json
 
 
 def _task():

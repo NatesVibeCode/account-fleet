@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from bulk_lanes.models import CleanPacket, InputItem, ModelOutput, ProviderReceipt, SCHEMA_BASE, TaskSpec
-from bulk_lanes.store import digest_json
+from free_fleet.models import CleanPacket, InputItem, ModelOutput, ProviderReceipt, SCHEMA_BASE, TaskSpec
+from free_fleet.store import digest_json
 
 
 def test_model_output_is_closed():
@@ -66,7 +66,7 @@ def test_packet_binds_and_revalidates_embedded_task():
         },
     )
     payload = {
-        "format_version": "bulk_lanes_v2",
+        "format_version": "free_fleet_v2",
         "exported_at": "2026-09-09T00:00:00Z",
         "run_id": "run-1",
         "task": task,

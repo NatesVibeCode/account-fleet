@@ -1,17 +1,20 @@
 {
-  "$id": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+  "$id": "https://raw.githubusercontent.com/NatesVibeCode/free-fleet/master/schemas/task-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
     "$schema": {
-      "const": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
-      "default": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
+      "const": "https://raw.githubusercontent.com/NatesVibeCode/free-fleet/master/schemas/task-v1.schema.json",
+      "default": "https://raw.githubusercontent.com/NatesVibeCode/free-fleet/master/schemas/task-v1.schema.json",
       "title": "$Schema",
       "type": "string"
     },
     "format_version": {
-      "const": "bulk_lanes_task_v1",
-      "default": "bulk_lanes_task_v1",
+      "default": "free_fleet_task_v1",
+      "enum": [
+        "free_fleet_task_v1",
+        "bulk_lanes_task_v1"
+      ],
       "title": "Format Version",
       "type": "string"
     },

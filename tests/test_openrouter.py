@@ -1,4 +1,4 @@
-from bulk_lanes.providers.openrouter import OpenRouterProvider
+from free_fleet.providers.openrouter import OpenRouterProvider
 
 
 class FakeResponse:
@@ -27,7 +27,7 @@ class FakeClient:
 
 
 def test_free_suffix_does_not_manufacture_zero_cost(monkeypatch):
-    monkeypatch.setattr("bulk_lanes.providers.openrouter.httpx.Client", FakeClient)
+    monkeypatch.setattr("free_fleet.providers.openrouter.httpx.Client", FakeClient)
     ok, _, receipt = OpenRouterProvider(api_key="key").run_prompt("openrouter/example:free", "prompt")
     assert ok is True
     assert receipt["cost"] is None

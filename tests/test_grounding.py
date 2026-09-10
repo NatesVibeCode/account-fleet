@@ -1,5 +1,5 @@
-from bulk_lanes.grounding import normalize_grounding, verify_grounding
-from bulk_lanes.packer import pack_items
+from free_fleet.grounding import normalize_grounding, verify_grounding
+from free_fleet.packer import pack_items
 
 
 def card(item_id, text, max_chars=6000):

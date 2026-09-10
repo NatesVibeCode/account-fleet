@@ -1,4 +1,4 @@
-from bulk_lanes.sessions import SessionPool, WorkerSession
+from free_fleet.sessions import SessionPool, WorkerSession
 
 def test_session_lifecycle():
     pool = SessionPool(num_sessions=3, routes=["r1", "r2"])

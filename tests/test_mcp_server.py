@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from bulk_lanes.mcp_server import Workspace
+from free_fleet.mcp_server import Workspace
 
 
 def test_workspace_rejects_escape(tmp_path):
@@ -31,14 +31,14 @@ def test_mcp_tool_error_does_not_kill_server(tmp_path):
             "id": 2,
             "method": "tools/call",
             "params": {
-                "name": "bulk_lanes_test",
+                "name": "free_fleet_test",
                 "arguments": {"task": "missing", "input_path": "missing.jsonl"},
             },
         },
         {"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {}},
     ]
     process = subprocess.Popen(
-        [sys.executable, "-m", "bulk_lanes.cli", "serve", "--workspace-root", str(tmp_path)],
+        [sys.executable, "-m", "free_fleet.cli", "serve", "--workspace-root", str(tmp_path)],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -62,8 +62,8 @@ def test_mcp_tool_error_does_not_kill_server(tmp_path):
     tools = responses[2]["result"]["tools"]
     assert len(tools) == 12
     tool_names = {tool["name"] for tool in tools}
-    assert "bulk_lanes_status" in tool_names
-    assert "bulk_lanes_eval" in tool_names
+    assert "free_fleet_status" in tool_names
+    assert "free_fleet_eval" in tool_names
     assert all(tool["description"] for tool in tools)
     assert all("inputSchema" in tool and "outputSchema" in tool for tool in tools)
 
@@ -86,7 +86,7 @@ def test_mcp_tools_execution(tmp_path):
             "id": 2,
             "method": "tools/call",
             "params": {
-                "name": "bulk_lanes_doctor",
+                "name": "free_fleet_doctor",
                 "arguments": {},
             },
         },
@@ -95,7 +95,7 @@ def test_mcp_tools_execution(tmp_path):
             "id": 3,
             "method": "tools/call",
             "params": {
-                "name": "bulk_lanes_schema",
+                "name": "free_fleet_schema",
                 "arguments": {"kind": "database"},
             },
         },
@@ -104,13 +104,13 @@ def test_mcp_tools_execution(tmp_path):
             "id": 4,
             "method": "tools/call",
             "params": {
-                "name": "bulk_lanes_routes",
+                "name": "free_fleet_routes",
                 "arguments": {"refresh": False, "observed_zero_only": False},
             },
         },
     ]
     process = subprocess.Popen(
-        [sys.executable, "-m", "bulk_lanes.cli", "serve", "--workspace-root", str(tmp_path)],
+        [sys.executable, "-m", "free_fleet.cli", "serve", "--workspace-root", str(tmp_path)],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

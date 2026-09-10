@@ -1,6 +1,0 @@
-interface:
-  display_name: "Bulk Lanes"
-  short_description: "Run typed, evidence-bound bulk processing"
-  default_prompt: "Use $bulk-lanes to define and test a typed, evidence-bound bulk task for these inputs."
-policy:
-  allow_implicit_invocation: true

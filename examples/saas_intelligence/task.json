@@ -1,6 +1,6 @@
 {
-  "$schema": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
-  "format_version": "bulk_lanes_task_v1",
+  "$schema": "https://raw.githubusercontent.com/NatesVibeCode/free-fleet/master/schemas/task-v1.schema.json",
+  "format_version": "free_fleet_task_v1",
   "name": "saas_intelligence",
   "instructions": "Extract product pricing, API support, SDKs, and value proposition from the supplied source spans.",
   "batch_size": 4,

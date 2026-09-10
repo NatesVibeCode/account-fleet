@@ -1,6 +1,6 @@
 {
-  "$schema": "https://raw.githubusercontent.com/NatesVibeCode/bulk-lanes/master/schemas/task-v1.schema.json",
-  "format_version": "bulk_lanes_task_v1",
+  "$schema": "https://raw.githubusercontent.com/NatesVibeCode/free-fleet/master/schemas/task-v1.schema.json",
+  "format_version": "free_fleet_task_v1",
   "name": "security_cve_triage",
   "instructions": "Extract vulnerability facts from the supplied advisory spans.",
   "batch_size": 3,

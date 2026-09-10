@@ -1,8 +1,8 @@
 import json
-from bulk_lanes.cli import main
-from bulk_lanes.engine import Engine
-from bulk_lanes.models import TaskSpec
-from bulk_lanes.store import BulkLanesStore
+from free_fleet.cli import main
+from free_fleet.engine import Engine
+from free_fleet.models import TaskSpec
+from free_fleet.store import BulkLanesStore
 
 
 class MockProvider:
@@ -31,7 +31,7 @@ def test_status_report_and_cli(tmp_path, monkeypatch, capsys):
     db_path = tmp_path / "test.db"
     store = BulkLanesStore(db_path)
 
-    from bulk_lanes.catalog import RouteCatalog
+    from free_fleet.catalog import RouteCatalog
     catalog = RouteCatalog(config_path=tmp_path / "routes.json", db_path=db_path)
     catalog.data = {
         "revision": 2,
@@ -74,7 +74,7 @@ def test_status_report_and_cli(tmp_path, monkeypatch, capsys):
     assert status.routes[0].verified == 1
 
     # Test CLI invocation
-    monkeypatch.setattr("sys.argv", ["bulk-lanes", "status", run_id, "--db", str(db_path), "--json"])
+    monkeypatch.setattr("sys.argv", ["free-fleet", "status", run_id, "--db", str(db_path), "--json"])
     main()
     captured = capsys.readouterr()
     cli_out = json.loads(captured.out)

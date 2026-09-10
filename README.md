@@ -1,10 +1,10 @@
-# bulk-lanes
+# free-fleet
 
-[![CI](https://github.com/NatesVibeCode/bulk-lanes/actions/workflows/ci.yml/badge.svg)](https://github.com/NatesVibeCode/bulk-lanes/actions/workflows/ci.yml)
+[![CI](https://github.com/NatesVibeCode/free-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/NatesVibeCode/free-fleet/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-High-throughput, evidence-grounded AI bulk processing across free, paid, and local models.
+Coordinated free LLM worker fleet for high-throughput, evidence-grounded batch processing across free, paid, and local models.
 
 Run structured classification, entity extraction, summarization, and triage across thousands of records with SQLite checkpointing, character-exact quote grounding, and deterministic verification against source text.
 
@@ -25,16 +25,16 @@ fb_3,"Customer support never answered my email about the missing invoice."
 
 ```bash
 # Initialize a typed triage task preset (priority, reason, grounded quotes)
-bulk-lanes init customer-triage --preset triage
+free-fleet init customer-triage --preset triage
 
 # Process the CSV using intelligent model routing
-bulk-lanes run customer-triage --input feedback.csv --id-column id --text-column comment --run-id triage-01
+free-fleet run customer-triage --input feedback.csv --id-column id --text-column comment --run-id triage-01
 ```
 
 ### 2. Export verified results
 
 ```bash
-bulk-lanes export triage-01 --format csv --output results.csv
+free-fleet export triage-01 --format csv --output results.csv
 ```
 
 ### 3. Output (`results.csv`)
@@ -54,8 +54,8 @@ Outputs contain structured claims paired with verbatim quotes deterministically 
 
 1. **Deterministic Quote Verification**: Cited quotes are verified against the raw source text at character-level precision and resolved to canonical `[start, end]` character offsets. If a model fabricates or alters a cited quote, validation fails and triggers immediate route rotation. *(Note: This deterministically proves that all cited quotes are verbatim source substrings; semantic entailment of claims from quotes is model-generated).*
 2. **Closed JSON Schemas**: Outputs adhere strictly to closed JSON Schemas defined in the `TaskSpec`. Models cannot add unexpected fields, produce unformatted markdown, or drift out of schema.
-3. **Intelligent Route Scoring**: Instead of blind round-robin rotation, `bulk-lanes` uses Bayesian-smoothed historical scoring based on verification rates, malformed JSON rates, grounding accuracy, and latency. Models that consistently produce verified results are prioritized.
-4. **Non-Destructive Rate-Limit Handling**: When an API returns a `429 Too Many Requests` or `5xx Server Error`, `bulk-lanes` puts the route in cooldown and retries the batch immediately on an alternative route without burning the batch attempt limit.
+3. **Intelligent Route Scoring**: Instead of blind round-robin rotation, `free-fleet` uses Bayesian-smoothed historical scoring based on verification rates, malformed JSON rates, grounding accuracy, and latency. Models that consistently produce verified results are prioritized.
+4. **Non-Destructive Rate-Limit Handling**: When an API returns a `429 Too Many Requests` or `5xx Server Error`, `free-fleet` puts the route in cooldown and retries the batch immediately on an alternative route without burning the batch attempt limit.
 5. **Zero-Price Circuit Breaker & Spend Ceilings**: For zero-price campaigns, route pricing is observed directly from provider receipts; if an unexpected charge occurs, the circuit breaker trips immediately. For paid campaigns, catalog rates and `--max-request-cost` spend ceilings enforce budget boundaries.
 
 ---
@@ -65,15 +65,15 @@ Outputs contain structured claims paired with verbatim quotes deterministically 
 ### Installation
 
 ```bash
-git clone https://github.com/NatesVibeCode/bulk-lanes.git
-python3 -m pip install ./bulk-lanes
+git clone https://github.com/NatesVibeCode/free-fleet.git
+python3 -m pip install ./free-fleet
 ```
 
 ### Initialize Workspace
 
 ```bash
 mkdir my-workspace && cd my-workspace
-bulk-lanes setup --workspace-root "$PWD" --refresh-routes
+free-fleet setup --workspace-root "$PWD" --refresh-routes
 ```
 
 ### Presets
@@ -81,20 +81,20 @@ bulk-lanes setup --workspace-root "$PWD" --refresh-routes
 Create typed tasks instantly with built-in presets:
 
 ```bash
-bulk-lanes init classify-demo --preset classify
-bulk-lanes init extract-demo --preset extract
-bulk-lanes init triage-demo --preset triage
-bulk-lanes init summarize-demo --preset summarize
+free-fleet init classify-demo --preset classify
+free-fleet init extract-demo --preset extract
+free-fleet init triage-demo --preset triage
+free-fleet init summarize-demo --preset summarize
 ```
 
 Validate and test before launching large runs:
 
 ```bash
 # Validate task spec and input without making any API calls
-bulk-lanes validate classify-demo --input input.jsonl
+free-fleet validate classify-demo --input input.jsonl
 
 # Test a single real batch
-bulk-lanes test classify-demo --input input.jsonl
+free-fleet test classify-demo --input input.jsonl
 ```
 
 ---
@@ -106,17 +106,17 @@ Directly process tabular data without custom transformation scripts:
 
 ```bash
 # Run on CSV specifying ID and text columns
-bulk-lanes run my-task --input records.csv --id-column id --text-column body
+free-fleet run my-task --input records.csv --id-column id --text-column body
 
 # Export directly to CSV
-bulk-lanes export <run_id> --format csv --output results.csv
+free-fleet export <run_id> --format csv --output results.csv
 ```
 
 ### 2. Live Run Monitoring
 Track queue progress, worker concurrency, and route-level metrics in real time:
 
 ```bash
-bulk-lanes status <run_id> --watch
+free-fleet status <run_id> --watch
 ```
 
 Output:
@@ -142,7 +142,7 @@ Route Performance:
 Benchmark available routes against test datasets to determine which models excel at your specific task:
 
 ```bash
-bulk-lanes eval customer-triage --input test-samples.csv --id-column id --text-column comment
+free-fleet eval customer-triage --input test-samples.csv --id-column id --text-column comment
 ```
 
 Output:
@@ -164,7 +164,7 @@ Run bulk workloads completely locally with **Ollama**, **LM Studio**, **vLLM**, 
 
 ```bash
 # Register your local or custom route in the catalog
-bulk-lanes routes add ollama/llama3.2:latest --provider ollama --free
+free-fleet routes add ollama/llama3.2:latest --provider ollama --free
 
 # Or configure environment variables
 export OPENAI_COMPATIBLE_BASE_URL="http://localhost:11434/v1"
@@ -172,7 +172,7 @@ export OPENAI_COMPATIBLE_API_KEY="ollama"
 export OPENAI_COMPATIBLE_MODEL="llama3.2:latest"
 
 # Run with local provider selection
-bulk-lanes run my-task --input data.csv --id-column id --text-column text --provider ollama
+free-fleet run my-task --input data.csv --id-column id --text-column text --provider ollama
 ```
 
 Endpoints on `localhost` or `127.0.0.1` are automatically marked free (`cost = 0.0`). For third-party cloud OpenAI-compatible endpoints, specify costs explicitly (`--input-cost` / `--output-cost`) or leave them as unknown-cost to prevent accidental misclassification.
@@ -181,7 +181,7 @@ Endpoints on `localhost` or `127.0.0.1` are automatically marked free (`cost = 0
 Enforce zero data retention (ZDR), prohibit provider data collection, limit request spend, and control upstream routing on a per-run basis:
 
 ```bash
-bulk-lanes run my-task \
+free-fleet run my-task \
   --input sensitive-data.jsonl \
   --zdr \
   --no-data-collection \
@@ -197,10 +197,10 @@ You can pass `--openrouter-providers` as a comma-separated list or as repeatable
 
 ## SQLite Control Plane
 
-`bulk-lanes` uses SQLite in WAL mode with `BEGIN IMMEDIATE` atomic leases. If a worker crashes or a laptop closes, the run can be resumed seamlessly:
+`free-fleet` uses SQLite in WAL mode with `BEGIN IMMEDIATE` atomic leases. If a worker crashes or a laptop closes, the run can be resumed seamlessly:
 
 ```bash
-bulk-lanes resume <run_id>
+free-fleet resume <run_id>
 ```
 
 - **Resumable**: Batches are committed upon verification. Completed work is never repeated.
@@ -237,13 +237,13 @@ Pass `--json` to any command for machine-readable JSON output.
 
 ## MCP Server
 
-`bulk-lanes` includes a Model Context Protocol (MCP) server for integration into Cursor, Claude Desktop, Antigravity, and other agent environments:
+`free-fleet` includes a Model Context Protocol (MCP) server for integration into Cursor, Claude Desktop, Antigravity, and other agent environments:
 
 ```json
 {
   "mcpServers": {
-    "bulk-lanes": {
-      "command": "bulk-lanes",
+    "free-fleet": {
+      "command": "free-fleet",
       "args": ["serve", "--workspace-root", "/absolute/path/to/workspace"]
     }
   }

@@ -1,6 +1,6 @@
 import httpx
-from bulk_lanes.models import RoutePolicy
-from bulk_lanes.providers.openrouter import OpenRouterProvider
+from free_fleet.models import RoutePolicy
+from free_fleet.providers.openrouter import OpenRouterProvider
 
 
 def test_openrouter_injects_zdr_and_privacy_controls(monkeypatch):

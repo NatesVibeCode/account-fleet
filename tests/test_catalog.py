@@ -1,7 +1,7 @@
 import httpx
 import pytest
-from bulk_lanes.catalog import PriceState, RouteCatalog, RouteCircuitBreaker, classify_price_state
-from bulk_lanes.models import RoutePolicy
+from free_fleet.catalog import PriceState, RouteCatalog, RouteCircuitBreaker, classify_price_state
+from free_fleet.models import RoutePolicy
 
 def test_catalog_ladder_rotation(tmp_path):
     cfg = tmp_path / "routes.json"
