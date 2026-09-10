@@ -1,4 +1,4 @@
-"""User-friendly Command Line Interface for bulk-lanes."""
+"""User-friendly Command Line Interface for bulk-lanes with multi-session orchestration."""
 import argparse
 import json
 import sys
@@ -17,12 +17,13 @@ def cmd_routes(args):
     ui.banner()
     cat = RouteCatalog()
     if getattr(args, "refresh", False):
-        ui.info("Querying OpenCode CLI model registry for zero-cost routes...")
-        try:
-            count = cat.refresh_from_opencode()
-            ui.success(f"Catalogue refreshed successfully ({count} models evaluated).")
-        except Exception as e:
-            ui.error(f"Failed to refresh catalogue: {e}")
+        ui.info("Scanning provider catalogues (OpenCode + OpenRouter) for free models in schema...")
+        res = cat.refresh_all()
+        for prov, val in res.items():
+            if prov.endswith("_error"):
+                ui.warn(f"Provider {prov.replace('_error', '')} notice: {val}")
+            else:
+                ui.success(f"Provider '{prov}': {val} free models discovered from schema.")
 
     free_only = not args.all
     routes = cat.get_routes(free_only=free_only)
@@ -31,6 +32,23 @@ def cmd_routes(args):
         return
     ui.info(f"Showing {'all configured' if args.all else 'active free/zero-price'} routes:")
     ui.print_routes_table(routes)
+
+def cmd_sessions(args):
+    ui.banner()
+    run_dir = Path(args.run_dir)
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.exists():
+        ui.error(f"No run manifest found in {run_dir}")
+        return
+
+    data = json.loads(manifest_path.read_text())
+    sessions = data.get("sessions", {})
+    if not sessions:
+        ui.info(f"No active or recorded worker sessions found in run '{data.get('run_id')}'.")
+        return
+
+    ui.info(f"Worker sessions recorded for run '{data.get('run_id')}':")
+    ui.print_sessions_table(sessions)
 
 def cmd_init(args):
     ui.banner()
@@ -133,7 +151,7 @@ def cmd_test(args):
         return
 
     b = batches[0]
-    ui.info(f"Dispatching test batch '{b['batch_id']}' across available model ladder...")
+    ui.info(f"Dispatching test batch '{b['batch_id']}' across available free model ladder...")
     ok, results, receipt, err = engine.execute_batch(b)
 
     print("\n" + "=" * 80)
@@ -158,18 +176,19 @@ def cmd_run(args):
         ui.error("No input items to process.")
         return
 
+    concurrency = args.sessions or args.concurrency or 4
     run_id = args.run_id or f"run_{task.name}_{int(time.time())}"
     run_dir = Path(args.output_dir or f"runs/{run_id}")
     
     ui.info(f"Starting bulk campaign '{run_id}'")
-    ui.info(f"Items: {len(items)} | Concurrency: {args.concurrency} worker lanes")
+    ui.info(f"Items: {len(items)} | Parallel Worker Sessions: {concurrency}")
 
     engine = Engine(task=task)
     out_packet = Path(args.output) if args.output else None
     engine.run_campaign(
         raw_items=items,
         run_dir=run_dir,
-        concurrency=args.concurrency,
+        concurrency=concurrency,
         max_attempts=args.max_attempts,
         output_packet_path=out_packet
     )
@@ -214,7 +233,11 @@ def main():
     # routes
     p_routes = subparsers.add_parser("routes", help="List available model lanes")
     p_routes.add_argument("--all", action="store_true", help="Show all routes including billable and disabled")
-    p_routes.add_argument("--refresh", action="store_true", help="Refresh zero-cost catalogue from opencode CLI")
+    p_routes.add_argument("--refresh", action="store_true", help="Scan providers for models with 'free' in schema")
+
+    # sessions
+    p_sessions = subparsers.add_parser("sessions", help="Inspect worker sessions for a run")
+    p_sessions.add_argument("run_dir", help="Directory of the run to inspect")
 
     # init
     p_init = subparsers.add_parser("init", help="Scaffold a new bulk triage task")
@@ -229,7 +252,7 @@ def main():
     p_run = subparsers.add_parser("run", help="Launch a bulk orchestration run")
     p_run.add_argument("--task", required=True, help="Path to task.py definition")
     p_run.add_argument("--input", required=True, help="Path to input data (.jsonl or .json)")
-    p_run.add_argument("--concurrency", type=int, default=4, help="Worker concurrency limit (default: 4)")
+    p_run.add_argument("--sessions", "--concurrency", dest="sessions", type=int, default=4, help="Number of parallel worker sessions (default: 4)")
     p_run.add_argument("--max-attempts", type=int, default=300, help="Attempt ceiling across campaign")
     p_run.add_argument("--output-dir", help="Directory for run manifest and artifacts")
     p_run.add_argument("--output", help="Output path for exported clean packet JSON")
@@ -240,7 +263,7 @@ def main():
     p_resume.add_argument("run_dir", help="Directory of the run to resume")
     p_resume.add_argument("--task", required=True, help="Path to task.py")
     p_resume.add_argument("--input", required=True, help="Path to original input file")
-    p_resume.add_argument("--concurrency", type=int, default=4)
+    p_resume.add_argument("--sessions", "--concurrency", dest="sessions", type=int, default=4)
     p_resume.add_argument("--max-attempts", type=int, default=300)
     p_resume.add_argument("--output-dir", default=None)
     p_resume.add_argument("--output", default=None)
@@ -259,6 +282,8 @@ def main():
 
     if args.command == "routes":
         cmd_routes(args)
+    elif args.command == "sessions":
+        cmd_sessions(args)
     elif args.command == "init":
         cmd_init(args)
     elif args.command == "test":

@@ -1,16 +1,39 @@
-"""Route catalog and dynamic circuit-breaker management."""
+"""Route catalog and dynamic circuit-breaker management with automated free-schema discovery."""
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+import httpx
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "routes.json"
 
 class RouteCircuitBreaker(Exception):
     pass
+
+def is_free_in_schema(model_data: dict) -> bool:
+    """Detects if a model qualifies as free by checking if 'free' appears in its schema or if cost is 0."""
+    # 1. Direct pricing check if available
+    pricing = model_data.get("pricing") or model_data.get("cost") or {}
+    try:
+        p_in = float(pricing.get("prompt") or pricing.get("input") or 0)
+        p_out = float(pricing.get("completion") or pricing.get("output") or 0)
+        cache_read = float(pricing.get("cache", {}).get("read") or 0)
+        cache_write = float(pricing.get("cache", {}).get("write") or 0)
+        if p_in == 0 and p_out == 0 and cache_read == 0 and cache_write == 0 and ("pricing" in model_data or "cost" in model_data):
+            return True
+    except (ValueError, TypeError):
+        pass
+
+    # 2. Check if the word "free" appears in the model schema (id, name, description, tags, pricing strings)
+    schema_dump = json.dumps(model_data).lower()
+    if re.search(r"(\bfree\b|:free|-free|_free)", schema_dump):
+        return True
+
+    return False
 
 class RouteCatalog:
     def __init__(self, config_path: Optional[Path] = None):
@@ -75,7 +98,7 @@ class RouteCatalog:
                 return
 
     def refresh_from_opencode(self) -> int:
-        """Queries OpenCode CLI catalogue, parses zero-cost metadata, and registers free routes."""
+        """Queries OpenCode CLI catalogue, scans for 'free' in schema, and registers matching routes."""
         if not shutil.which("opencode"):
             raise RuntimeError("opencode CLI not found in PATH")
 
@@ -107,26 +130,19 @@ class RouteCatalog:
                 text = rest
 
         known = {r["id"]: r for r in self.data.get("routes", [])}
-        updated_count = 0
+        discovered_count = 0
 
-        for model_id, model in models.items():
-            cost = model.get("cost", {})
-            cache = cost.get("cache", {})
-            is_zero = (
-                cost.get("input") == 0
-                and cost.get("output") == 0
-                and cache.get("read", 0) == 0
-                and cache.get("write", 0) == 0
-            )
-            is_active = model.get("status") == "active"
+        for model_id, model_data in models.items():
+            is_free = is_free_in_schema(model_data)
+            is_active = model_data.get("status") == "active"
 
             if model_id in known:
                 r = known[model_id]
-                r["zero_price_verified"] = is_zero
-                r["enabled"] = is_zero and is_active
+                r["zero_price_verified"] = is_free
+                r["enabled"] = is_free and is_active
                 r["last_verified"] = time.strftime("%Y-%m-%d")
-                r["verification_source"] = "opencode models opencode --verbose"
-            elif is_zero and is_active:
+                r["verification_source"] = "opencode models opencode --verbose (schema scan)"
+            elif is_free and is_active:
                 self.data["routes"].append({
                     "id": model_id,
                     "provider": "opencode",
@@ -134,9 +150,67 @@ class RouteCatalog:
                     "zero_price_verified": True,
                     "auth": "hosted-free",
                     "last_verified": time.strftime("%Y-%m-%d"),
-                    "verification_source": "opencode models opencode --verbose"
+                    "verification_source": "opencode models opencode --verbose (schema scan)"
                 })
-            updated_count += 1
+            if is_free:
+                discovered_count += 1
 
         self.save()
-        return updated_count
+        return discovered_count
+
+    def refresh_from_openrouter(self) -> int:
+        """Queries OpenRouter API, scans all models for 'free' in schema/pricing, and registers them."""
+        try:
+            with httpx.Client(timeout=15) as client:
+                resp = client.get("https://openrouter.ai/api/v1/models")
+                if resp.status_code != 200:
+                    raise RuntimeError(f"OpenRouter models API returned HTTP {resp.status_code}")
+                data = resp.json().get("data", [])
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch OpenRouter models: {e}")
+
+        known = {r["id"]: r for r in self.data.get("routes", [])}
+        discovered_count = 0
+
+        for m in data:
+            if is_free_in_schema(m):
+                raw_id = m.get("id", "")
+                route_id = f"openrouter/{raw_id}" if not raw_id.startswith("openrouter/") else raw_id
+                
+                if route_id in known:
+                    r = known[route_id]
+                    r["zero_price_verified"] = True
+                    r["enabled"] = True
+                    r["last_verified"] = time.strftime("%Y-%m-%d")
+                    r["verification_source"] = "openrouter /api/v1/models (schema scan)"
+                else:
+                    self.data["routes"].append({
+                        "id": route_id,
+                        "provider": "openrouter",
+                        "enabled": True,
+                        "zero_price_verified": True,
+                        "auth": "api-key",
+                        "cost_per_1k_input": 0.0,
+                        "cost_per_1k_output": 0.0,
+                        "last_verified": time.strftime("%Y-%m-%d"),
+                        "verification_source": "openrouter /api/v1/models (schema scan)"
+                    })
+                discovered_count += 1
+
+        self.save()
+        return discovered_count
+
+    def refresh_all(self) -> Dict[str, int]:
+        """Scans all providers for free models automatically."""
+        results = {}
+        try:
+            results["opencode"] = self.refresh_from_opencode()
+        except Exception as e:
+            results["opencode_error"] = str(e)
+            
+        try:
+            results["openrouter"] = self.refresh_from_openrouter()
+        except Exception as e:
+            results["openrouter_error"] = str(e)
+
+        return results

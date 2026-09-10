@@ -36,3 +36,11 @@ def test_circuit_breaker_on_nonzero_cost(tmp_path):
     # Check that route was disabled in catalog
     assert cat.data["routes"][0]["enabled"] is False
     assert "Circuit breaker tripped" in cat.data["routes"][0]["disabled_reason"]
+
+def test_is_free_in_schema():
+    from bulk_lanes.catalog import is_free_in_schema
+    assert is_free_in_schema({"id": "meta/llama:free"}) is True
+    assert is_free_in_schema({"id": "m1", "name": "Model 1 (Free tier)"}) is True
+    assert is_free_in_schema({"id": "m2", "pricing": {"prompt": "0", "completion": "0"}}) is True
+    assert is_free_in_schema({"id": "m3", "cost": {"input": 0, "output": 0}}) is True
+    assert is_free_in_schema({"id": "m4", "pricing": {"prompt": "0.001", "completion": "0.002"}}) is False

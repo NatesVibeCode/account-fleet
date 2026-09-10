@@ -1,4 +1,4 @@
-"""OpenCode CLI provider running in sandbox isolation."""
+"""OpenCode CLI provider running in sandbox isolation with session support."""
 import json
 import time
 import uuid
@@ -15,12 +15,14 @@ class OpenCodeProvider(BaseProvider):
         route_id: str,
         prompt: str,
         system_prompt: Optional[str] = None,
-        timeout_sec: int = 120
+        timeout_sec: int = 120,
+        session_id: Optional[str] = None
     ) -> Tuple[bool, Optional[str], dict]:
         started = time.time()
         rid = uuid.uuid4().hex
         receipt = {
             "id": rid,
+            "session_id": session_id,
             "provider": "opencode",
             "requested_route": route_id,
             "status": "failed",
@@ -42,7 +44,10 @@ class OpenCodeProvider(BaseProvider):
             "share": "disabled"
         }
 
-        args = ["run", "--format", "json", "--model", route_id, full_prompt]
+        args = ["run", "--format", "json", "--model", route_id]
+        if session_id:
+            args += ["--session", session_id]
+        args.append(full_prompt)
 
         try:
             code, stdout, stderr = self.sandbox.run_opencode_task(

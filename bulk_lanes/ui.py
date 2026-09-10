@@ -52,3 +52,15 @@ def warn(msg: str):
 
 def error(msg: str):
     print(f"{RED}✖ {msg}{RESET}")
+
+def print_sessions_table(sessions: dict):
+    print(f"\n{BOLD}{'SESSION ID':<22} {'WORKER':<8} {'ROUTE':<40} {'ITEMS':<8} {'STATUS'}{RESET}")
+    print("-" * 90)
+    for sid, s in sessions.items():
+        w_id = f"#{s.get('worker_idx', 1)}"
+        route = s.get('route_id', 'unknown')[:38]
+        items = s.get('items_completed', 0)
+        status_raw = s.get('status', 'active')
+        status = f"{GREEN}{status_raw}{RESET}" if status_raw == "completed" else f"{CYAN}{status_raw}{RESET}"
+        print(f"{sid:<22} {w_id:<8} {route:<40} {items:<8} {status}")
+    print()

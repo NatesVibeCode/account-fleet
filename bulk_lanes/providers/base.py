@@ -24,7 +24,8 @@ class BaseProvider(ABC):
         route_id: str,
         prompt: str,
         system_prompt: Optional[str] = None,
-        timeout_sec: int = 120
+        timeout_sec: int = 120,
+        session_id: Optional[str] = None
     ) -> Tuple[bool, Optional[str], dict]:
-        """Executes a prompt. Returns (success, text_response, receipt_dict)."""
+        """Executes a prompt in a session. Returns (success, text_response, receipt_dict)."""
         pass

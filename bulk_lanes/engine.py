@@ -1,4 +1,4 @@
-"""Core execution engine coordinating lanes, verification, and manifests."""
+"""Core execution engine coordinating lanes, multi-session workers, and manifests."""
 import concurrent.futures
 import json
 import time
@@ -13,6 +13,7 @@ from .providers.base import clean_llm_json
 from .providers.opencode import OpenCodeProvider
 from .providers.openrouter import OpenRouterProvider
 from .sandbox import SandboxRunner
+from .sessions import SessionPool, WorkerSession
 from .task import Task
 from . import ui
 
@@ -31,10 +32,15 @@ class Engine:
         self.openrouter_prov = OpenRouterProvider()
         self.max_attempts_per_batch = max_attempts_per_batch
 
-    def execute_batch(self, batch: Dict[str, Any]) -> Tuple[bool, Optional[List[dict]], dict, Optional[str]]:
-        """Executes a single multi-item batch with ladder fallbacks and quote verification."""
+    def execute_batch(
+        self,
+        batch: Dict[str, Any],
+        session: Optional[WorkerSession] = None
+    ) -> Tuple[bool, Optional[List[dict]], dict, Optional[str]]:
+        """Executes a single multi-item batch within a worker session."""
         batch_id = batch["batch_id"]
         items = batch["items"]
+        session_id = session.session_id if session else None
         
         # Build prompt payload
         simplified_items = []
@@ -49,8 +55,11 @@ class Engine:
             items_json=json.dumps(simplified_items, indent=2)
         )
 
-        # Get route ladder
+        # Get route ladder; prioritize session assigned route if provided
         ladder = self.catalog.get_ladder(task_seed=batch_id, free_only=True)
+        if session and session.route_id in ladder:
+            ladder = [session.route_id] + [r for r in ladder if r != session.route_id]
+
         if not ladder:
             ladder = self.catalog.get_ladder(task_seed=batch_id, free_only=False)
         
@@ -61,7 +70,6 @@ class Engine:
         last_receipt = {}
 
         for route_id in ladder[:self.max_attempts_per_batch]:
-            # Select provider
             if route_id.startswith("openrouter/") or "openrouter" in route_id:
                 provider = self.openrouter_prov
             else:
@@ -70,12 +78,15 @@ class Engine:
             ok, response_text, receipt = provider.run_prompt(
                 route_id=route_id,
                 prompt=user_content,
-                system_prompt=self.task.system_prompt
+                system_prompt=self.task.system_prompt,
+                session_id=session_id
             )
             last_receipt = receipt
 
             if not ok:
                 last_err = receipt.get("error", "Unknown provider error")
+                if session:
+                    session.record_error(f"[{route_id}] {last_err}")
                 continue
 
             # Record cost to monitor zero-price guarantee & circuit breaker
@@ -88,11 +99,15 @@ class Engine:
             parsed = clean_llm_json(response_text)
             if not parsed or not isinstance(parsed, dict):
                 last_err = f"Malformed JSON from route '{route_id}'"
+                if session:
+                    session.record_error(last_err)
                 continue
 
             extracted_items = parsed.get("items")
             if not isinstance(extracted_items, list):
                 last_err = f"Missing 'items' array in response from '{route_id}'"
+                if session:
+                    session.record_error(last_err)
                 continue
 
             # Verify mathematical grounding (exact quote match against supplied slices)
@@ -105,9 +120,16 @@ class Engine:
 
             if not grounded:
                 last_err = f"Grounding verification failed: {ground_err}"
+                if session:
+                    session.record_error(last_err)
                 continue
 
-            # Success!
+            # Record session success
+            if session:
+                tokens = receipt.get("usage", {}).get("total_tokens", 0) if isinstance(receipt.get("usage"), dict) else 0
+                cost = receipt.get("cost", 0.0) or 0.0
+                session.record_batch_success(items_count=len(extracted_items), tokens=tokens, cost=cost)
+
             return True, extracted_items, receipt, None
 
         return False, None, last_receipt, last_err
@@ -120,9 +142,14 @@ class Engine:
         max_attempts: int = 300,
         output_packet_path: Optional[Path] = None
     ) -> dict:
-        """Executes full bulk run with resumption and concurrent worker lanes."""
+        """Executes full bulk run with parallel sessions, resumption, and worker lanes."""
         manifest = ManifestManager(run_dir=run_dir, total_items=len(raw_items), max_attempts=max_attempts)
         batches = pack_items(raw_items, batch_size=self.task.batch_size, max_slice_chars=self.task.max_slice_chars)
+
+        # Setup parallel worker session pool
+        available_free_routes = self.catalog.get_ladder(task_seed=str(time.time()), free_only=True)
+        session_pool = SessionPool(num_sessions=concurrency, routes=available_free_routes)
+        sessions_list = session_pool.get_all_sessions()
 
         pending_batches = []
         for b in batches:
@@ -132,13 +159,14 @@ class Engine:
                 pending_batches.append(b)
 
         ui.info(f"Loaded {len(raw_items)} items packed into {len(batches)} batches.")
+        ui.info(f"Orchestrating {concurrency} parallel worker sessions across free model lanes.")
         if len(batches) - len(pending_batches) > 0:
             ui.info(f"Resuming: {len(batches) - len(pending_batches)} batches already verified.")
 
         total_pending = len(pending_batches)
         completed_count = len(batches) - total_pending
 
-        def worker(batch):
+        def session_worker(session: WorkerSession, batch: Dict[str, Any]):
             bid = batch["batch_id"]
             item_ids = [it["item_id"] for it in batch["items"]]
             
@@ -147,7 +175,7 @@ class Engine:
             if not reserved:
                 return bid, False, None, {}, "Attempt budget exceeded"
 
-            ok, res, receipt, err = self.execute_batch(batch)
+            ok, res, receipt, err = self.execute_batch(batch, session=session)
             if ok:
                 manifest.record_batch_success(bid, res, receipt)
             else:
@@ -156,14 +184,24 @@ class Engine:
 
         if pending_batches:
             with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
-                futures = [executor.submit(worker, b) for b in pending_batches]
+                # Map batches to sessions round-robin
+                futures = [
+                    executor.submit(session_worker, sessions_list[i % len(sessions_list)], batch)
+                    for i, batch in enumerate(pending_batches)
+                ]
                 for f in concurrent.futures.as_completed(futures):
                     bid, ok, res, receipt, err = f.result()
                     completed_count += 1
                     status_text = "Verified" if ok else f"Failed ({err[:35]}...)"
                     ui.print_progress(completed_count, len(batches), prefix="Progress:", suffix=status_text)
 
+        for s in sessions_list:
+            s.finish()
+
+        # Save session stats in manifest
+        manifest.data["sessions"] = session_pool.to_dict()
         manifest.finalize()
+
         export_path = output_packet_path or (run_dir / "clean_packet.json")
         packet = export_clean_packet(manifest.data, export_path)
         

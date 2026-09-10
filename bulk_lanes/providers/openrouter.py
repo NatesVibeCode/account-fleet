@@ -1,4 +1,4 @@
-"""OpenRouter API provider for free and low-cost model lanes."""
+"""OpenRouter API provider for free and low-cost model lanes with session tracking."""
 import os
 import time
 import uuid
@@ -19,7 +19,8 @@ class OpenRouterProvider(BaseProvider):
         route_id: str,
         prompt: str,
         system_prompt: Optional[str] = None,
-        timeout_sec: int = 120
+        timeout_sec: int = 120,
+        session_id: Optional[str] = None
     ) -> Tuple[bool, Optional[str], dict]:
         started = time.time()
         rid = uuid.uuid4().hex
@@ -29,6 +30,7 @@ class OpenRouterProvider(BaseProvider):
         
         receipt = {
             "id": rid,
+            "session_id": session_id,
             "provider": "openrouter",
             "requested_route": route_id,
             "status": "failed",
