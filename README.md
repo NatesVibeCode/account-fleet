@@ -172,7 +172,7 @@ export OPENAI_COMPATIBLE_API_KEY="ollama"
 export OPENAI_COMPATIBLE_MODEL="llama3.2:latest"
 
 # Run with local provider selection
-bulk-lanes run my-task --input data.csv --id-column id --text-column text --provider openai_compatible
+bulk-lanes run my-task --input data.csv --id-column id --text-column text --provider ollama
 ```
 
 Endpoints on `localhost` or `127.0.0.1` are automatically marked free (`cost = 0.0`). For third-party cloud OpenAI-compatible endpoints, specify costs explicitly (`--input-cost` / `--output-cost`) or leave them as unknown-cost to prevent accidental misclassification.
