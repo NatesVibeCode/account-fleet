@@ -4,7 +4,7 @@ PDF is static images only — no JS.
 
 ```bash
 shasum -a 256 free-fleet-prospecting-carousel.pdf
-# 0bfc3c60caf43ed07219562e32372a873730a690b7b062cbace6d24655f33196
+# cbe00faac11523281fc6b9d936f108f404845e1f5037c80a7240bc080338c866
 # VirusTotal: https://www.virustotal.com/gui/home/upload → 0/90
 ```
 

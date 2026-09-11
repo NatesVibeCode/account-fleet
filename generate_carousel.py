@@ -402,13 +402,13 @@ def generate_carousel():
     <div class="hero" style="font-size:92px; line-height:0.88; letter-spacing:-3px; text-align:center;">
       Research and score<br/><span class="accent">anything</span> at scale, for free.
     </div>
-    <div style="font-size:20px; font-weight:500; color:#57534e; text-align:center; margin-top:8px;">
+    <div style="font-size:20px; font-weight:500; color:#57534e; text-align:center; margin-top:12px;">
       Your target accounts • Your docs • Your criteria — every row backed by proof.
     </div>
-    <div style="margin-top:14px; background:#1a1a18; border:1px solid #2a2a28; border-radius:10px; padding:14px 20px; display:inline-flex; align-items:center; gap:18px;">
-      <span style="font-family:ui-monospace; font-size:14px; color:#e8e6dc;"><span style="color:#a8a29e;">$</span> free-fleet quickstart --demo</span>
-      <span style="font-size:11px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#a7c5a8; border-left:1px solid #2a2a28; padding-left:18px;">Try in 30s →</span>
+    <div style="font-size:15px; font-weight:600; color:#78716c; text-align:center; margin-top:16px;">
+      I created a tool to research anything for free — on GitHub
     </div>
+    <div style="font-family:ui-monospace; font-size:13px; color:#a8a29e; text-align:center; margin-top:6px;">github.com/NatesVibeCode/free-fleet • MIT</div>
   </div>
 </div>
 
@@ -699,22 +699,13 @@ def generate_carousel():
       </div>
     </div>
 
-    <div class="two-col-cards">
-      <div class="sub-stat-card">
-        <div class="s-tag">Local &amp; Private</div>
-        <div class="s-val">Permissive MIT License</div>
-        <div class="s-desc">Open source and private. Account data and qualification criteria never leave your machine.</div>
-      </div>
-      <div class="sub-stat-card">
-        <div class="s-tag">Open Source</div>
-        <div class="s-val">Star on GitHub ★</div>
-        <div class="s-desc">Quickstart guide and templates available at github.com/NatesVibeCode/free-fleet.</div>
-      </div>
+    <div style="background:#ffffff; border:1px solid #e8e6dc; border-radius:12px; padding:18px 20px; text-align:center;">
+      <div style="font-size:15px; color:#57534e; line-height:1.5;">I made a tool to research anything for free — on GitHub.<br/><span style="font-family:ui-monospace; color:#141413; font-weight:700;">github.com/NatesVibeCode/free-fleet</span> <span style="color:#a8a29e;">• MIT • runs locally</span></div>
     </div>
   </div>
 
   <div class="footer">
-    <div class="brand"><span>free-fleet</span> // free &amp; open source on github</div>
+    <div class="brand">free-fleet • not selling anything</div>
     <div class="page">05 / 05</div>
   </div>
 </div>
