@@ -1,42 +1,42 @@
-# free-fleet
+# account-fleet
 
-[![CI](https://github.com/NatesVibeCode/free-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/NatesVibeCode/free-fleet/actions/workflows/ci.yml)
+[![CI](https://github.com/NatesVibeCode/account-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/NatesVibeCode/account-fleet/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-> **Verified CSV in → Verified CSV out. Every claim cites a verbatim source quote at `[start, end]` character offsets — or the row fails validation and the batch rotates to the next route. No hallucinations pass the gate.**
+> **Research and score target accounts for free with character-exact evidence. Every qualification cites a verbatim source quote at `[start, end]` character offsets — or the account is automatically discarded. Zero hallucinations pass the gate.**
 
-Coordinated fleet for high-throughput, evidence-grounded batch extraction across free, paid, and local LLMs — with SQLite checkpointing, Bayesian route scoring, and deterministic quote verification.
+Local outbound intelligence engine for high-throughput, evidence-grounded account research across free, paid, and local LLMs — with SQLite checkpointing, 4-layer compounding funnels, and deterministic quote verification.
 
-*Canonical CLI is `free-fleet`. `bulk-lanes` remains as a deprecated shim (removed in 0.3.0).*
+*Canonical CLI is `account-fleet`. (`free-fleet` remains available as an alias).*
 
 ---
 
-## 30-Second Example: CSV In, Verified CSV Out
+## 30-Second Example: Raw Accounts In → Scored, Grounded CSV Out
 
-Suppose you have customer feedback in `feedback.csv`:
+Suppose you have a list of target companies in `accounts.csv`:
 
 ```csv
-id,comment
-fb_1,"The onboarding was smooth, but the checkout button gave a 500 error."
-fb_2,"Fast shipping and the packaging was completely recyclable."
-fb_3,"Customer support never answered my email about the missing invoice."
+company,careers_text
+stripe.com,"We are hiring a Staff Engineer to lead migration off legacy v1 billing pipeline to Kafka..."
+hyper_ai,"Looking for Senior Backend Engineer hitting latency limits at 50k QPS on Postgres cluster..."
+pinecone.io,"Hiring Infrastructure Engineer scaling vector search across multi-tenant clusters..."
 ```
 
-### 1. Initialize a task and run
+### 1. Initialize the account research preset and run
 
 ```bash
-# Initialize a typed triage task preset (priority, reason, grounded quotes)
-free-fleet init customer-triage --preset triage
+# Initialize the typed account-research preset (score 0-100, identified_gap, fit_tier)
+account-fleet init research-demo --preset account-research
 
-# Process the CSV using intelligent model routing
-free-fleet run customer-triage --input feedback.csv --id-column id --text-column comment --run-id triage-01
+# Process the accounts through free model routes (zero API spend)
+account-fleet run research-demo --input accounts.csv --id-column company --text-column careers_text --run-id campaign-01
 ```
 
-### 2. Export verified results
+### 2. Export the top 25 ranked accounts
 
 ```bash
-free-fleet export triage-01 --format csv --output results.csv
+account-fleet export campaign-01 --format csv --sort-by score --desc --top 25 --rank --output ranked_accounts.csv
 ```
 
 ### 3. Output (`results.csv`)

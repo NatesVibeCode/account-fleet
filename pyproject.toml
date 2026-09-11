@@ -3,15 +3,15 @@ requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "free-fleet"
+name = "account-fleet"
 version = "0.2.2"
-description = "Harness and worker fleet for free and local LLM batch processing with exact source evidence."
+description = "Research and score target accounts for free with exact quote verification."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "NatesVibeCode" }]
 requires-python = ">=3.10"
-keywords = ["mcp", "agent-skills", "sqlite", "structured-output", "evidence-grounding"]
+keywords = ["mcp", "agent-skills", "sqlite", "structured-output", "evidence-grounding", "prospecting", "account-research"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -31,10 +31,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/NatesVibeCode/free-fleet"
-Repository = "https://github.com/NatesVibeCode/free-fleet"
-Issues = "https://github.com/NatesVibeCode/free-fleet/issues"
-Security = "https://github.com/NatesVibeCode/free-fleet/security/policy"
+Homepage = "https://github.com/NatesVibeCode/account-fleet"
+Repository = "https://github.com/NatesVibeCode/account-fleet"
+Issues = "https://github.com/NatesVibeCode/account-fleet/issues"
+Security = "https://github.com/NatesVibeCode/account-fleet/security/policy"
 
 [project.optional-dependencies]
 dev = [
@@ -42,8 +42,9 @@ dev = [
 ]
 
 [project.scripts]
+account-fleet = "free_fleet.cli:main"
 free-fleet = "free_fleet.cli:main"
-bulk-lanes = "free_fleet.cli:main"  # deprecated shim, emits warning and will be removed in 0.3.0
+bulk-lanes = "free_fleet.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["free_fleet*"]

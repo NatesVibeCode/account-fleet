@@ -417,7 +417,7 @@ def generate_carousel():
 
   <div style="display:flex; justify-content:center; align-items:center; border-top:1px solid #e8e6dc; padding-top:28px;">
     <div style="font-family:ui-monospace; font-size:24px; font-weight:800; color:#141413;">
-      github.com/NatesVibeCode/free-fleet
+      github.com/NatesVibeCode/account-fleet
     </div>
   </div>
 </div>
@@ -493,7 +493,7 @@ def generate_carousel():
   </div>
 
   <div class="footer" style="padding-top: 18px; margin-top: 0;">
-    <div class="brand"><span>free-fleet</span> // 100% free stack</div>
+    <div class="brand"><span>account-fleet</span> // 100% free stack</div>
     <div class="page" style="font-size: 16px; padding: 8px 18px;">02 / 05</div>
   </div>
 </div>
@@ -607,7 +607,7 @@ def generate_carousel():
   </div>
 
   <div class="footer" style="padding-top: 18px; margin-top: 0;">
-    <div class="brand"><span>free-fleet</span> // ranked &amp; actionable spreadsheets</div>
+    <div class="brand"><span>account-fleet</span> // ranked &amp; actionable spreadsheets</div>
     <div class="page" style="font-size: 16px; padding: 8px 18px;">03 / 05</div>
   </div>
 </div>
@@ -705,7 +705,7 @@ def generate_carousel():
   </div>
 
   <div class="footer" style="padding-top: 18px; margin-top: 0;">
-    <div class="brand"><span>free-fleet</span> // compounding evidence layers</div>
+    <div class="brand"><span>account-fleet</span> // compounding evidence layers</div>
     <div class="page" style="font-size: 16px; padding: 8px 18px;">04 / 05</div>
   </div>
 </div>
@@ -736,7 +736,7 @@ def generate_carousel():
         “We are looking for a Staff Engineer to join our Platform team. In this role, you will be responsible for <mark style="background: rgba(120,140,93,0.28); color: #141413; font-weight: 800; padding: 2px 6px; border-radius: 4px;">leading the migration of our legacy billing service to Apache Kafka</mark> and modernizing our distributed streaming architecture.”
       </div>
       <div style="font-size: 18px; color: #57534e; line-height: 1.4;">
-        Free-fleet fetches raw unedited HTML/markdown from public URLs and indexes it in local SQLite before extraction.
+        Account-fleet fetches raw unedited HTML/markdown from public URLs and indexes it in local SQLite before extraction.
       </div>
     </div>
 
@@ -808,7 +808,7 @@ def generate_carousel():
   </div>
 
   <div class="footer" style="padding-top: 16px; margin-top: 0;">
-    <div class="brand"><span>free-fleet</span> // character-exact verification</div>
+    <div class="brand"><span>account-fleet</span> // character-exact verification</div>
     <div class="page" style="font-size: 16px; padding: 8px 18px;">05 / 05</div>
   </div>
 </div>
@@ -817,7 +817,7 @@ def generate_carousel():
 </html>
 """
 
-    out_pdf = Path("free-fleet-prospecting-carousel.pdf")
+    out_pdf = Path("account-fleet-prospecting-carousel.pdf")
     print(f"Rendering PDF with WeasyPrint: {out_pdf}...")
     html = weasyprint.HTML(string=html_content)
     html.write_pdf(target=str(out_pdf))
