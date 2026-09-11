@@ -694,67 +694,67 @@ def generate_carousel():
     </div>
     <div>
       <div class="code-sub">
-        Every claim backed by <span class="cyan">[start,end]</span> quote — <span class="file">free_fleet/grounding.py:63</span>
+        Open source research — <span class="cyan">every row includes the source quote</span>
       </div>
     </div>
   </div>
 
-  <!-- 4 Funnel Bars -->
+  <!-- 4 Funnel Bars — example account research, not a promise -->
   <div class="bars-container">
     <!-- Bar 1: Universe -->
     <div class="bar-row">
       <div class="bar-meta">
-        <span>Raw Campaign Universe</span>
+        <span>Starting set • example</span>
         <span class="count">2,500</span>
       </div>
       <div class="bar-track">
-        <div class="bar-fill bar-1">2,500 Universe</div>
+        <div class="bar-fill bar-1">2,500 input</div>
       </div>
     </div>
 
     <!-- Bar 2: ICP -->
     <div class="bar-row">
       <div class="bar-meta">
-        <span>Layer 1: ICP &amp; Firmographic Fit</span>
+        <span>Layer 1: Firmographic check</span>
         <span class="count cyan">600</span>
       </div>
       <div class="bar-track">
-        <div class="bar-fill bar-2">600 ICP</div>
+        <div class="bar-fill bar-2">600 remaining</div>
       </div>
     </div>
 
     <!-- Bar 3: Tech -->
     <div class="bar-row">
       <div class="bar-meta">
-        <span>Layer 2: Tech Stack &amp; Architecture Pain</span>
+        <span>Layer 2: Tech stack notes</span>
         <span class="count purple">150</span>
       </div>
       <div class="bar-track">
-        <div class="bar-fill bar-3">150 Tech</div>
+        <div class="bar-fill bar-3">150 remaining</div>
       </div>
     </div>
 
     <!-- Bar 4: Intent -->
     <div class="bar-row">
       <div class="bar-meta">
-        <span>Layer 3: Hiring Velocity &amp; Pain Reqs</span>
+        <span>Layer 3: Hiring signals</span>
         <span class="count amber">50</span>
       </div>
       <div class="bar-track">
-        <div class="bar-fill bar-4">50 Intent</div>
+        <div class="bar-fill bar-4">50 remaining</div>
       </div>
     </div>
 
-    <!-- Final Sniper Badge -->
+    <!-- Final set -->
     <div class="sniper-badge-container">
       <div class="sniper-badge-left">
-        <span class="label">Layer 4 Founder Language</span>
-        <span class="title">Sniper Accounts (Tier-1 Direct Pipeline)</span>
+        <span class="label">Layer 4 • Founder notes</span>
+        <span class="title">25 selected for review</span>
       </div>
       <div class="sniper-badge-right">
         <span class="arrow">→</span>
         <span class="val">25</span>
-        <span class="unit">Sniper</span>
+        <span class="unit">selected</span>
       </div>
     </div>
   </div>
@@ -814,14 +814,14 @@ def generate_carousel():
 
       <div class="outcomes-row">
         <div class="outcome-box drop">
-          <span class="o-tag">Gate 1 Exclusion</span>
-          <span class="o-val">DROP 1,900</span>
-          <span class="o-desc">B2C, wrong tier, out of ICP bounds</span>
+          <span class="o-tag">Filtered at Gate 1</span>
+          <span class="o-val">1,900 filtered</span>
+          <span class="o-desc">Not matching firmographic check</span>
         </div>
         <div class="outcome-box survive">
-          <span class="o-tag">Layer 1 Admitted</span>
-          <span class="o-val">600 SURVIVORS</span>
-          <span class="o-desc">Grounded homepage proof validated</span>
+          <span class="o-tag">Remaining</span>
+          <span class="o-val">600 kept</span>
+          <span class="o-desc">Quote found on homepage/pricing</span>
         </div>
       </div>
     </div>
@@ -829,7 +829,7 @@ def generate_carousel():
     <!-- Connector -->
     <div class="connector-arrow">
       <div class="line"></div>
-      <span>600 Survivors Passed To Layer 2</span>
+      <span>600 passed to next layer — example</span>
       <div class="line"></div>
     </div>
 
@@ -838,7 +838,7 @@ def generate_carousel():
       <div class="card-header-row">
         <div class="card-title-group">
           <div class="step-num purple">2</div>
-          <div class="card-title">Layer 2: Tech Stack &amp; Pain Points</div>
+          <div class="card-title">Layer 2: Tech stack</div>
         </div>
         <div class="card-badge">100 Batches • 4 Mins</div>
       </div>
@@ -857,14 +857,14 @@ def generate_carousel():
 
       <div class="outcomes-row">
         <div class="outcome-box drop">
-          <span class="o-tag">Gate 2 Exclusion</span>
-          <span class="o-val">DROP 450</span>
-          <span class="o-desc">Stable stack, zero competitor friction</span>
+          <span class="o-tag">Filtered at Gate 2</span>
+          <span class="o-val">450 filtered</span>
+          <span class="o-desc">No relevant tech signal in docs</span>
         </div>
         <div class="outcome-box survive">
-          <span class="o-tag">Layer 2 Admitted</span>
-          <span class="o-val">150 SURVIVORS</span>
-          <span class="o-desc">Verbatim competitor tool cited in docs</span>
+          <span class="o-tag">Remaining</span>
+          <span class="o-val">150 kept</span>
+          <span class="o-desc">Quote found in docs/changelog</span>
         </div>
       </div>
     </div>
@@ -906,7 +906,7 @@ def generate_carousel():
       <div class="card-header-row">
         <div class="card-title-group">
           <div class="step-num amber">3</div>
-          <div class="card-title" style="font-size: 22px;">Layer 3: Hiring Velocity &amp; Tech Budget</div>
+          <div class="card-title" style="font-size: 22px;">Layer 3: Hiring signals</div>
         </div>
         <div class="card-badge">25 Batches • 2 Mins</div>
       </div>
@@ -925,14 +925,14 @@ def generate_carousel():
 
       <div class="outcomes-row">
         <div class="outcome-box drop" style="padding: 14px 18px;">
-          <span class="o-tag">Gate 3 Exclusion</span>
-          <span class="o-val" style="font-size: 24px;">DROP 100</span>
-          <span class="o-desc">No active hiring or budget allocated</span>
+          <span class="o-tag">Filtered at Gate 3</span>
+          <span class="o-val" style="font-size: 24px;">100 filtered</span>
+          <span class="o-desc">No matching hiring signal</span>
         </div>
         <div class="outcome-box survive" style="padding: 14px 18px;">
-          <span class="o-tag">Layer 3 Admitted</span>
-          <span class="o-val" style="font-size: 24px;">50 SURVIVORS</span>
-          <span class="o-desc">Active job postings quote target stack</span>
+          <span class="o-tag">Remaining</span>
+          <span class="o-val" style="font-size: 24px;">50 kept</span>
+          <span class="o-desc">Quote found in job post</span>
         </div>
       </div>
     </div>
@@ -942,33 +942,33 @@ def generate_carousel():
       <div class="card-header-row">
         <div class="card-title-group">
           <div class="step-num green">4</div>
-          <div class="card-title" style="font-size: 22px;">Layer 4: Founder Voice &amp; Narrative Signals</div>
+          <div class="card-title" style="font-size: 22px;">Layer 4: Founder notes</div>
         </div>
         <div class="card-badge">12 Batches • 1 Min</div>
       </div>
 
       <div class="pipe-flow" style="padding: 12px 18px;">
         <div class="pipe-node">
-          <span class="node-label">Input Action</span>
-          <span class="node-val" style="font-size: 16px;">SCRAPE_4 (Podcasts, Founder Posts, Letters)</span>
+          <span class="node-label">Check</span>
+          <span class="node-val" style="font-size: 16px;">Founder posts / podcasts</span>
         </div>
         <span class="flow-arrow">→</span>
         <div class="pipe-node">
-          <span class="node-label">Evidence Check</span>
-          <span class="node-val" style="font-size: 16px;">GATE_4 (Founder Cites Bottleneck)</span>
+          <span class="node-label">Keep if</span>
+          <span class="node-val" style="font-size: 16px;">Quote describes bottleneck</span>
         </div>
       </div>
 
       <div class="outcomes-row">
         <div class="outcome-box drop" style="padding: 14px 18px;">
-          <span class="o-tag">Gate 4 Exclusion</span>
-          <span class="o-val" style="font-size: 24px;">DROP 25</span>
-          <span class="o-desc">No founder narrative trigger detected</span>
+          <span class="o-tag">Filtered at Gate 4</span>
+          <span class="o-val" style="font-size: 24px;">25 filtered</span>
+          <span class="o-desc">No relevant founder quote</span>
         </div>
-        <div class="outcome-box survive" style="padding: 14px 18px; border-color: #22C55E; background: rgba(34, 197, 94, 0.15);">
-          <span class="o-tag" style="color: #4ADE80;">Final Tier-1</span>
-          <span class="o-val" style="font-size: 24px; color: #4ADE80;">25 TIER-1 SNIPER</span>
-          <span class="o-desc" style="color: #86EFAC;">Direct personalized outreach ready</span>
+        <div class="outcome-box survive" style="padding: 14px 18px; background:#f0fdf4; border-color:#a7c5a8;">
+          <span class="o-tag" style="color:#365314;">Remaining</span>
+          <span class="o-val" style="font-size: 24px; color:#14532d;">25 kept</span>
+          <span class="o-desc" style="color:#57534e;">For review — with quotes</span>
         </div>
       </div>
     </div>
@@ -1011,11 +1011,11 @@ def generate_carousel():
         <span class="dot"></span>Output &amp; Proof Payload
       </div>
     </div>
-    <div class="hero-numbers" style="font-size: 56px; margin-bottom: 6px;">
-      The Grounded Output
+    <div class="hero-numbers" style="font-size: 52px; margin-bottom: 6px;">
+      Auto-reviewed<br/><span style="color:#788c5d;">against the source</span>
     </div>
-    <p style="font-size: 20px; color: #94A3B8;">
-      Every sales claim links back to an exact character-level verbatim quote.
+    <p style="font-size: 19px; color: #57534e; margin-top: 4px;">
+      If the model can’t point to the exact quote, the row doesn’t ship — we try the next lane.
     </p>
   </div>
 

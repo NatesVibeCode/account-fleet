@@ -8,7 +8,7 @@ This carousel PDF is **static images only** — no JavaScript, no embedded scrip
 
 ```bash
 shasum -a 256 free-fleet-prospecting-carousel.pdf
-# 59bbc0977b60b8c7c549895c9ee66b4cecf77ad729e8d3f2442e6acf281b5899  free-fleet-prospecting-carousel.pdf
+# 50b3dc3e2ee049a5088f3c0df218f2c8e2dcec53a6fad293252bc085789cf6ca  free-fleet-prospecting-carousel.pdf
 
 # VirusTotal (free, no account): https://www.virustotal.com/gui/home/upload → drag PDF → expect 0/90
 ```
