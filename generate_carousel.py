@@ -1,11 +1,10 @@
-"""Generate 5-slide LinkedIn carousel — Automated Research Suite.
+"""Generate 4-slide LinkedIn carousel — Automated Research Suite.
 
-Universal typography, styling, and sizing system across all 5 slides:
-- Slide 1: Title — Research and score anything, at scale, for free (your target accounts, docs, anything)
-- Slide 2: Accounts scored, sorted, and backed by proof (every row carries its source quote)
-- Slide 3: The 4-Layer Filter — how 1,000 accounts become 25 with evidence (account research example)
-- Slide 4: Quote must match the source exactly (QuoteRef verification you can run yourself)
-- Slide 5: Run it where you already chat — Claude, Codex, Cursor, Grokbot, Antigravity
+Universal typography, styling, and sizing system across all 4 slides:
+- Slide 1: Accounts scored, sorted, and backed by proof (every row carries its source quote)
+- Slide 2: The 4-Layer Filter — how 1,000 accounts become 25 with evidence (account research example)
+- Slide 3: Quote must match the source exactly (QuoteRef verification you can run yourself)
+- Slide 4: Run it where you already chat — Claude, Codex, Cursor, Grokbot, Antigravity
 """
 
 from pathlib import Path
@@ -40,15 +39,14 @@ def generate_carousel():
     page-break-after: always;
     break-after: page;
     position: relative;
-    padding: 72px 75px 64px 75px;
+    padding: 52px 60px 32px 60px;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 28px;
     background: #faf9f5;
-    background-image: radial-gradient(circle at 1px 1px, rgba(20,20,19,0.065) 1.1px, transparent 0),
-                      repeating-linear-gradient(90deg, transparent 0 48px, rgba(20,20,19,0.012) 48px 49px),
-                      radial-gradient(ellipse at 50% 0%, rgba(232,228,215,0.75) 0%, transparent 55%);
-    background-size: 20px 20px, 49px 49px, 100% 480px;
+    background-image: radial-gradient(circle at 1px 1px, rgba(20,20,19,0.075) 1.2px, transparent 0), repeating-linear-gradient(90deg, transparent 0 48px, rgba(20,20,19,0.015) 48px 49px), radial-gradient(ellipse at 50% 0%, rgba(232,228,215,0.9) 0%, transparent 58%);
+    background-size: 20px 20px, 49px 49px, 100% 440px;
     background-repeat: repeat, repeat, no-repeat;
     box-shadow: inset 0 0 0 1px #ece9e0, inset 0 0 80px rgba(232,228,215,0.5), inset 0 1px 0 rgba(255,255,255,0.9);
     overflow: hidden;
@@ -384,10 +382,11 @@ def generate_carousel():
     justify-content: space-between;
     align-items: center;
     border-top: 1px solid #e8e6dc;
-    padding-top: 22px;
-    font-size: 15px;
-    font-weight: 600;
+    padding-top: 16px;
+    font-size: 12px;
+    font-weight: 500;
     color: #a8a29e;
+    margin-top: auto;
   }
   .footer .brand { color: #78716c; }
   .footer .brand span { color: #141413; font-weight: 800; }
@@ -425,7 +424,7 @@ def generate_carousel():
 </div>
 
 <!-- ======================================================================= -->
-<!-- SLIDE 2: THE DELIVERABLE (COVER HOOK)                                   -->
+<!-- SLIDE 2: THE DELIVERABLE (COVER HOOK) — GOOD SLIDE PRESERVED AS 02/05  -->
 <!-- ======================================================================= -->
 <div class="slide">
   <div class="slide-header">
@@ -509,7 +508,7 @@ def generate_carousel():
 
   <div class="footer">
     <div class="brand"><span>free-fleet</span> // ranked &amp; actionable spreadsheets</div>
-    <div class="page">01 / 04</div>
+    <div class="page">02 / 05</div>
   </div>
 </div>
 
@@ -588,7 +587,7 @@ def generate_carousel():
 
   <div class="footer">
     <div class="brand"><span>free-fleet</span> // compounding evidence layers</div>
-    <div class="page">02 / 04</div>
+    <div class="page">03 / 05</div>
   </div>
 </div>
 
@@ -653,7 +652,7 @@ def generate_carousel():
 
   <div class="footer">
     <div class="brand"><span>free-fleet</span> // character-exact verification</div>
-    <div class="page">03 / 04</div>
+    <div class="page">04 / 05</div>
   </div>
 </div>
 
@@ -727,7 +726,7 @@ def generate_carousel():
 
   <div class="footer">
     <div class="brand"><span>free-fleet</span> // free &amp; open source on github</div>
-    <div class="page">04 / 04</div>
+    <div class="page">05 / 05</div>
   </div>
 </div>
 
