@@ -395,25 +395,21 @@ def generate_carousel():
 <body>
 
 <!-- ======================================================================= -->
-<!-- SLIDE 1: TITLE — FULL FRAME, NO WASTED SQUARE                           -->
+<!-- SLIDE 1: TITLE — CENTERED, 2 LINES, NO PILLS, NO FOOTER                   -->
 <!-- ======================================================================= -->
-<div class="slide" style="justify-content:space-between; padding-top:64px; padding-bottom:28px;">
-  <div style="font-size:12px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:#a8a29e;">free-fleet • Automated Research Suite • MIT</div>
-  <div>
-    <div class="hero" style="font-size:84px; line-height:0.88; letter-spacing:-2.5px;">
-      Research<br/>and score<br/><span class="accent">anything,</span><br/>at scale, for free.
+<div class="slide" style="justify-content:center; align-items:center; text-align:center; padding: 96px 60px;">
+  <div style="display:flex; flex-direction:column; align-items:center; gap:22px; width:100%; max-width:920px;">
+    <div class="hero" style="font-size:92px; line-height:0.88; letter-spacing:-3px; text-align:center;">
+      Research and score<br/><span class="accent">anything</span> at scale, for free.
     </div>
-    <div style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap;">
-      <span style="background:#ffffff; border:1px solid #d6d3cd; padding:10px 16px; border-radius:9999px; font-size:15px; font-weight:600; color:#44403c;">Your target accounts</span>
-      <span style="background:#ffffff; border:1px solid #d6d3cd; padding:10px 16px; border-radius:9999px; font-size:15px; font-weight:600; color:#44403c;">Your docs</span>
-      <span style="background:#ffffff; border:1px solid #d6d3cd; padding:10px 16px; border-radius:9999px; font-size:15px; font-weight:600; color:#44403c;">Your criteria</span>
+    <div style="font-size:20px; font-weight:500; color:#57534e; text-align:center; margin-top:8px;">
+      Your target accounts • Your docs • Your criteria — every row backed by proof.
+    </div>
+    <div style="margin-top:14px; background:#1a1a18; border:1px solid #2a2a28; border-radius:10px; padding:14px 20px; display:inline-flex; align-items:center; gap:18px;">
+      <span style="font-family:ui-monospace; font-size:14px; color:#e8e6dc;"><span style="color:#a8a29e;">$</span> free-fleet quickstart --demo</span>
+      <span style="font-size:11px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#a7c5a8; border-left:1px solid #2a2a28; padding-left:18px;">Try in 30s →</span>
     </div>
   </div>
-  <div style="background:#1a1a18; border:1px solid #2a2a28; border-radius:12px; padding:18px 20px; display:flex; justify-content:space-between; align-items:center;">
-    <div style="font-family:ui-monospace; font-size:15px; color:#e8e6dc;"><span style="color:#a8a29e;">$</span> free-fleet quickstart --demo <span style="color:#a8a29e;">→ no keys, runs locally</span></div>
-    <div style="font-size:13px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#a7c5a8;">Try in 30s →</div>
-  </div>
-  <div class="footer" style="margin-top:0;"><div class="brand"><span>free-fleet</span> // research and score anything</div><div class="page">01 / 05</div></div>
 </div>
 
 <!-- ======================================================================= -->
