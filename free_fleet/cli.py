@@ -363,7 +363,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
                 truncated += 1
     partial_msg = ""
     if truncated:
-        partial_msg = f"\nWarning: {truncated}/{len(items)} item(s) exceed max_slice_chars={task.max_slice_chars} and were split into {total_slices} windows (lossless sliding window with overlap). Quotes remain verifiable within each window; consider raising --max-slice-chars for fewer windows." if truncated else ""
+        partial_msg = f"\nWarning: {truncated}/{len(items)} item(s) exceed max_slice_chars={task.max_slice_chars} and were tri-window sliced (head/mid/tail) with partial:true. Quotes must lie within one window; consider raising --max-slice-chars for fewer windows." if truncated else ""
     _emit(
         ValidationReport(valid=True, task=task.name, input_items=len(items), batches=len(batches)),
         args.json,
@@ -760,8 +760,14 @@ def cmd_mcp_install(args: argparse.Namespace) -> None:
             existing["mcpServers"] = servers
 
         already = servers.get("free-fleet")
-        needs_update = already != server_entry
-        status = "unchanged" if not needs_update else ("planned" if dry_run else "updated" if already is not None else "created")
+        force = bool(getattr(args, "force", False))
+        needs_update = force or already != server_entry
+        if not needs_update:
+            status = "unchanged"
+        elif dry_run:
+            status = "planned"
+        else:
+            status = "updated" if already is not None else "created"
 
         if needs_update and not dry_run:
             config_path.parent.mkdir(parents=True, exist_ok=True)

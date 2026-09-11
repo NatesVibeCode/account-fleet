@@ -37,7 +37,7 @@ Start with `command -v free-fleet`. On a fresh system, run `free-fleet setup --w
 1. Run `free-fleet doctor --json`, then inspect `free-fleet routes --json`. Refresh only when requested or needed; refresh contacts providers and appends route evidence.
 2. For a zero-key proof, run `free-fleet quickstart --demo --run-id demo --json` (writes `runs/demo/clean_packet.json` + `.csv` via `demo/fake`).
 3. For local or private models (Ollama, vLLM, LM Studio), add the route with `free-fleet routes add <id> --provider <provider> --free`.
-4. Create or select a task (`--preset classify|extract|triage|summarize` or `--from-example labels.csv`), then run `free-fleet validate TASK --input FILE --json` before inference. Long documents are lossless sliding-window sliced; `validate` warns how many windows were created.
+4. Create or select a task (`--preset classify|extract|triage|summarize` or `--from-example labels.csv`), then run `free-fleet validate TASK --input FILE --json` before inference. Long documents are tri-window sliced (head/mid/tail) with `partial:true` and exact offsets; `validate` warns when truncation occurs.
 5. Run one batch with `free-fleet test TASK --input FILE --json`.
 6. Optionally benchmark candidate routes with `free-fleet eval TASK --input FILE --concurrency 4 --json` to update Bayesian ranking priors (now parallelized per-sample/per-route).
 7. Start the bounded campaign with an explicit run ID, session count, attempt ceiling, and optional policy (`--free-only` for verified zero-cost, `--zdr`, `--provider`, `--exclude-provider`, `--max-request-cost`).
