@@ -58,16 +58,7 @@ def generate_carousel():
     background-image: repeating-linear-gradient(0deg, transparent 0 26px, rgba(20,20,19,0.032) 26px 27px);
     pointer-events: none;
   }
-  .slide::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 6px;
-    background: #141413;
-    pointer-events: none;
-  }
+  .slide::after { display: none; }
 
   .slide-header {
     display: flex;
