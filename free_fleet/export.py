@@ -135,6 +135,21 @@ def export_clean_packet(
 
     if export_format == "csv" or output_path.suffix.lower() == ".csv":
         export_clean_csv(run_data, output_path)
+    elif export_format == "jsonl" or output_path.suffix.lower() == ".jsonl":
+        # One JSON record per line, with flattened claims + quote
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            for rec in verified_records:
+                flat = {
+                    "item_id": rec.item_id,
+                    "source_uri": rec.source_uri,
+                    "source_digest": rec.source_digest,
+                    **rec.claims,
+                    "primary_quote_text": rec.quotes[0].text if rec.quotes else "",
+                    "quote_count": len(rec.quotes),
+                    "quotes": [q.model_dump(mode="json") for q in rec.quotes],
+                }
+                f.write(json.dumps(flat, ensure_ascii=False) + "\n")
     else:
         output_path.write_text(json.dumps(packet, indent=2))
 

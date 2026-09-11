@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 from .base import BaseProvider
+from .demo import DemoProvider
 from .opencode import OpenCodeProvider
-from .openrouter import OpenRouterProvider
 from .openai_compatible import OpenAICompatibleProvider
+from .openrouter import OpenRouterProvider
 
 
 class ProviderRegistry:
@@ -15,6 +16,7 @@ class ProviderRegistry:
         self.register("opencode", OpenCodeProvider())
         self.register("openrouter", OpenRouterProvider())
         self.register("openai_compatible", OpenAICompatibleProvider(provider_name="openai_compatible"))
+        self.register("demo", DemoProvider())
         # Aliases for local/generic providers
         self.register("ollama", OpenAICompatibleProvider(provider_name="ollama"))
         self.register("lmstudio", OpenAICompatibleProvider(provider_name="lmstudio"))

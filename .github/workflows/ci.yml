@@ -30,6 +30,21 @@ jobs:
       run: |
         pytest -v
 
+    - name: Golden run — bundled examples via deterministic demo provider (no API keys)
+      run: |
+        python -m pip install -e ".[dev]"
+        free-fleet validate examples/saas_intelligence/task.json --input examples/saas_intelligence/sample_data.jsonl --json
+        free-fleet validate examples/security_cve_triage/task.json --input examples/security_cve_triage/sample_data.jsonl --json
+        rm -rf runs/demo free-fleet.db
+        free-fleet quickstart --demo --run-id demo --json
+        test -f runs/demo/clean_packet.json
+        test -f runs/demo/clean_packet.csv
+        free-fleet export demo --format csv --output /tmp/demo.csv
+        free-fleet export demo --format jsonl --output /tmp/demo.jsonl
+        free-fleet export demo --format json --output /tmp/demo.json
+        free-fleet status demo --json
+        echo "Golden run verified"
+
     - name: Verify installed wheel bootstrap
       run: |
         python -m pip wheel . --no-deps --wheel-dir dist

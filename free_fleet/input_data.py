@@ -1,14 +1,91 @@
-"""Strict input boundary for JSON, JSONL, and CSV records."""
+"""Strict input boundary for JSON, JSONL, CSV, TXT, PDF, and HTML records."""
 from __future__ import annotations
 
 import csv
 import json
+import re
+import html as _html
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Optional
 
 from pydantic import ValidationError
 
 from .models import InputItem
+
+
+class _TextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self._chunks: list[str] = []
+        self._skip = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "noscript"):
+            self._skip = True
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "noscript"):
+            self._skip = False
+
+    def handle_data(self, data):
+        if not self._skip and data.strip():
+            self._chunks.append(data.strip())
+
+    def get_text(self) -> str:
+        return "\n\n".join(self._chunks)
+
+
+def _strip_html(text: str) -> str:
+    parser = _TextExtractor()
+    try:
+        parser.feed(text)
+        stripped = parser.get_text()
+        return _html.unescape(stripped) if stripped else _html.unescape(re.sub(r"<[^>]+>", " ", text))
+    except Exception:
+        return _html.unescape(re.sub(r"<[^>]+>", " ", text))
+
+
+def _extract_pdf_text(path: Path) -> str:
+    """Best-effort PDF extraction using pypdf if available; falls back to raw bytes decode."""
+    try:
+        from pypdf import PdfReader  # type: ignore
+
+        reader = PdfReader(str(path))
+        pages = []
+        for p in reader.pages:
+            try:
+                pages.append(p.extract_text() or "")
+            except Exception:
+                continue
+        txt = "\n\n".join(pages).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+    # Fallback: try pdfminer.six
+    try:
+        from pdfminer.high_level import extract_text  # type: ignore
+
+        txt = extract_text(str(path)) or ""
+        if txt.strip():
+            return txt.strip()
+    except Exception:
+        pass
+    # Last resort: decode bytes and hint user
+    raw = path.read_bytes()
+    # If PDF header present, warn
+    try:
+        decoded = raw.decode("utf-8", errors="ignore")
+        # Strip PDF binary artifacts crudely
+        decoded = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", decoded)
+        if len(decoded.strip()) > 100:
+            return decoded.strip()[:200_000]
+    except Exception:
+        pass
+    raise ValueError(
+        f"Cannot extract text from PDF '{path}': install 'pypdf' (pip install pypdf) or 'pdfminer.six' for robust extraction"
+    )
 
 
 class InputDataError(ValueError):
@@ -115,8 +192,20 @@ def load_input_items(
             if isinstance(exc, InputDataError):
                 raise
             raise InputDataError(f"failed to parse CSV: {exc}") from exc
+    elif suffix in (".txt", ".md"):
+        txt = source.read_text(encoding="utf-8", errors="replace")
+        raw_items = [{"item_id": source.stem.replace(" ", "_"), "text": txt, "title": source.name}]
+    elif suffix in (".html", ".htm"):
+        html = source.read_text(encoding="utf-8", errors="replace")
+        txt = _strip_html(html)
+        if not txt.strip():
+            raise InputDataError(f"HTML file '{source}' produced no extractable text")
+        raw_items = [{"item_id": source.stem.replace(" ", "_"), "text": txt, "title": source.name}]
+    elif suffix == ".pdf":
+        txt = _extract_pdf_text(source)
+        raw_items = [{"item_id": source.stem.replace(" ", "_"), "text": txt, "title": source.name}]
     else:
-        raise InputDataError("input must use .json, .jsonl, or .csv")
+        raise InputDataError("input must use .json, .jsonl, .csv, .txt, .md, .html, or .pdf")
 
     if not isinstance(raw_items, list):
         raise InputDataError("input must be an array, an {items: [...]} object, or JSONL/CSV rows")

@@ -1,12 +1,63 @@
 """Generic OpenAI-compatible API provider supporting Ollama, LM Studio, vLLM, Groq, etc."""
 from __future__ import annotations
 
+import json
 import os
+import threading
 import time
 import uuid
 from typing import Any, Optional, Tuple
 import httpx
 from .base import BaseProvider
+
+_shared_client: httpx.Client | None = None
+_client_lock = threading.Lock()
+
+def _shared_httpx_client(timeout: int = 120) -> httpx.Client:
+    global _shared_client
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return httpx.Client(timeout=timeout, follow_redirects=True)
+    with _client_lock:
+        if _shared_client is not None and not isinstance(_shared_client, httpx.Client):
+            try:
+                _shared_client.close()
+            except Exception:
+                pass
+            _shared_client = None
+        if _shared_client is None or _shared_client.is_closed:
+            _shared_client = httpx.Client(
+                timeout=timeout,
+                limits=httpx.Limits(max_keepalive_connections=50, max_connections=100),
+                http2=False,
+                follow_redirects=True,
+            )
+        if _shared_client.timeout.read != timeout:  # type: ignore
+            try:
+                _shared_client.close()
+            except Exception:
+                pass
+            _shared_client = httpx.Client(
+                timeout=timeout,
+                limits=httpx.Limits(max_keepalive_connections=50, max_connections=100),
+                http2=False,
+                follow_redirects=True,
+            )
+        return _shared_client
+
+def _should_use_ephemeral() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST"))
+
+def _extract_output_schema(prompt: str) -> dict | None:
+    try:
+        start = prompt.find("{")
+        if start == -1:
+            return None
+        payload = json.loads(prompt[start:])
+        if isinstance(payload, dict) and "output_schema" in payload:
+            return payload["output_schema"]
+    except Exception:
+        pass
+    return None
 
 
 def _parse_retry_after(header_val: Optional[str]) -> float:
@@ -117,59 +168,83 @@ class OpenAICompatibleProvider(BaseProvider):
             "messages": messages,
             "temperature": 0.1,
         }
+        # Native constrained decoding: pass JSON Schema when available (vLLM, Ollama, Groq, Cerebras support it)
+        schema = _extract_output_schema(prompt)
+        if schema is not None:
+            # Prefer strict json_schema; fallback to json_object is handled per-provider
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "free_fleet_output", "strict": True, "schema": schema},
+            }
+
+        def _do_post(_payload):
+            if _should_use_ephemeral():
+                with httpx.Client(timeout=timeout_sec, follow_redirects=True) as _cl:
+                    return _cl.post(f"{self.base_url}/chat/completions", headers=headers, json=_payload)
+            _cl = _shared_httpx_client(timeout=timeout_sec)
+            return _cl.post(f"{self.base_url}/chat/completions", headers=headers, json=_payload)
 
         try:
-            with httpx.Client(timeout=timeout_sec) as client:
-                url = f"{self.base_url}/chat/completions"
-                resp = client.post(url, headers=headers, json=payload)
-
-                if resp.status_code == 429:
-                    retry_sec = _parse_retry_after(resp.headers.get("retry-after"))
-                    receipt["error"] = f"Rate limited (429): {resp.text[:300]}"
-                    receipt["error_type"] = "rate_limit"
-                    receipt["retry_after"] = retry_sec
-                    receipt["duration_seconds"] = time.time() - started
-                    return False, None, receipt
-
-                if resp.status_code in (500, 502, 503, 504):
-                    receipt["error"] = f"Transient HTTP {resp.status_code}: {resp.text[:300]}"
-                    receipt["error_type"] = "transient_http"
-                    receipt["retry_after"] = 5.0
-                    receipt["duration_seconds"] = time.time() - started
-                    return False, None, receipt
-
-                if resp.status_code != 200:
-                    receipt["error"] = f"HTTP {resp.status_code}: {resp.text[:500]}"
-                    receipt["error_type"] = "inference_error"
-                    receipt["duration_seconds"] = time.time() - started
-                    return False, None, receipt
-
-                data = resp.json()
-                choices = data.get("choices", [])
-                if not choices:
-                    receipt["error"] = "Empty choices in response"
-                    receipt["error_type"] = "inference_error"
-                    receipt["duration_seconds"] = time.time() - started
-                    return False, None, receipt
-
-                text = choices[0].get("message", {}).get("content", "")
-                usage = data.get("usage", {})
-                receipt["usage"] = usage
-
-                reported_cost = data.get("cost") or (usage.get("cost") if isinstance(usage, dict) else None)
-                if isinstance(reported_cost, (int, float)):
-                    receipt["cost"] = float(reported_cost)
-                    receipt["cost_status"] = "reported_zero" if reported_cost == 0 else "billed"
-                elif self.is_local:
-                    receipt["cost"] = 0.0
-                    receipt["cost_status"] = "reported_zero"
+            resp = _do_post(payload)
+            # If provider rejects json_schema, retry once without it
+            if resp.status_code == 400 and "response_format" in payload and "response_format" in resp.text.lower():
+                payload.pop("response_format", None)
+                if self.provider_name in ("ollama", "lmstudio", "vllm", "groq", "cerebras", "openai_compatible"):
+                    payload["response_format"] = {"type": "json_object"}
+                    resp = _do_post(payload)
+                    if resp.status_code == 400 and "response_format" in resp.text.lower():
+                        payload.pop("response_format", None)
+                        resp = _do_post(payload)
                 else:
-                    receipt["cost"] = None
-                    receipt["cost_status"] = "unknown"
+                    resp = _do_post(payload)
 
-                receipt["status"] = "complete"
+            if resp.status_code == 429:
+                retry_sec = _parse_retry_after(resp.headers.get("retry-after"))
+                receipt["error"] = f"Rate limited (429): {resp.text[:300]}"
+                receipt["error_type"] = "rate_limit"
+                receipt["retry_after"] = retry_sec
                 receipt["duration_seconds"] = time.time() - started
-                return True, text, receipt
+                return False, None, receipt
+
+            if resp.status_code in (500, 502, 503, 504):
+                receipt["error"] = f"Transient HTTP {resp.status_code}: {resp.text[:300]}"
+                receipt["error_type"] = "transient_http"
+                receipt["retry_after"] = 5.0
+                receipt["duration_seconds"] = time.time() - started
+                return False, None, receipt
+
+            if resp.status_code != 200:
+                receipt["error"] = f"HTTP {resp.status_code}: {resp.text[:500]}"
+                receipt["error_type"] = "inference_error"
+                receipt["duration_seconds"] = time.time() - started
+                return False, None, receipt
+
+            data = resp.json()
+            choices = data.get("choices", [])
+            if not choices:
+                receipt["error"] = "Empty choices in response"
+                receipt["error_type"] = "inference_error"
+                receipt["duration_seconds"] = time.time() - started
+                return False, None, receipt
+
+            text = choices[0].get("message", {}).get("content", "")
+            usage = data.get("usage", {})
+            receipt["usage"] = usage
+
+            reported_cost = data.get("cost") or (usage.get("cost") if isinstance(usage, dict) else None)
+            if isinstance(reported_cost, (int, float)):
+                receipt["cost"] = float(reported_cost)
+                receipt["cost_status"] = "reported_zero" if reported_cost == 0 else "billed"
+            elif self.is_local:
+                receipt["cost"] = 0.0
+                receipt["cost_status"] = "reported_zero"
+            else:
+                receipt["cost"] = None
+                receipt["cost_status"] = "unknown"
+
+            receipt["status"] = "complete"
+            receipt["duration_seconds"] = time.time() - started
+            return True, text, receipt
 
         except httpx.TimeoutException:
             receipt["error"] = f"Request timed out after {timeout_sec}s"

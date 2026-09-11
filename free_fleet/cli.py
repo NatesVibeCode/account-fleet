@@ -59,6 +59,7 @@ def _extract_policy(args: argparse.Namespace) -> RoutePolicy | None:
     max_cost_out = float(getattr(args, "max_cost_out", 0.0) or 0.0)
     raw_req_cost = getattr(args, "max_request_cost", None)
     max_request_cost = float(raw_req_cost) if raw_req_cost is not None else None
+    free_only = bool(getattr(args, "free_only", False))
     openrouter_providers = _split_csv_list(getattr(args, "openrouter_providers", None))
     openrouter_ignore = _split_csv_list(getattr(args, "openrouter_ignore", None)) or []
     openrouter_order = _split_csv_list(getattr(args, "openrouter_order", None))
@@ -67,6 +68,7 @@ def _extract_policy(args: argparse.Namespace) -> RoutePolicy | None:
         providers, exclude_providers, routes, exclude_routes,
         zdr, no_data_coll, max_cost_in > 0, max_cost_out > 0,
         max_request_cost is not None,
+        free_only,
         openrouter_providers, openrouter_ignore, openrouter_order,
     ]):
         return None
@@ -81,6 +83,7 @@ def _extract_policy(args: argparse.Namespace) -> RoutePolicy | None:
         max_cost_per_1k_input=max_cost_in,
         max_cost_per_1k_output=max_cost_out,
         max_request_cost=max_request_cost,
+        free_only=free_only,
         openrouter_providers=openrouter_providers,
         openrouter_ignore=openrouter_ignore,
         openrouter_order=openrouter_order,
@@ -232,19 +235,93 @@ def cmd_tasks(args: argparse.Namespace) -> None:
     _emit({"tasks": tasks, "count": len(tasks)}, args.json, human)
 
 
-def cmd_init(args: argparse.Namespace) -> None:
-    preset = PRESETS[args.preset]
-    spec = TaskSpec(
-        name=args.name,
-        instructions=preset["instructions"],
-        batch_size=args.batch_size,
-        claims_schema={
+def _infer_schema_from_example(path: Path, label_column: str | None = None) -> tuple[dict[str, Any], str]:
+    """Infer a draft claims_schema from a labeled CSV/JSONL example file."""
+    import csv as _csv
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        with open(path, newline="", encoding="utf-8") as f:
+            reader = _csv.DictReader(f)
+            if not reader.fieldnames:
+                raise ValueError("example CSV has no header")
+            rows = list(reader)
+            if not rows:
+                raise ValueError("example CSV is empty")
+            fieldnames = list(reader.fieldnames)
+            # Auto-detect label column if not provided
+            if label_column is None:
+                candidates = [c for c in fieldnames if c.lower() in ("label", "target", "category", "class", "priority", "severity", "pricing_type")]
+                label_column = candidates[0] if candidates else fieldnames[-1]
+            if label_column not in fieldnames:
+                raise ValueError(f"label column '{label_column}' not found in {fieldnames}")
+            distinct = sorted({(r.get(label_column) or "").strip() for r in rows if (r.get(label_column) or "").strip()})
+            # Build schema: infer enum vs string
+            if distinct and len(distinct) <= 20 and all(len(v) < 50 for v in distinct):
+                schema = {"type": "string", "enum": distinct}
+            else:
+                schema = {"type": "string"}
+            # Detect additional label columns (secondary labels)
+            other_labels = [c for c in fieldnames if c != label_column and c.lower() not in ("id", "item_id", "text", "body", "content", "title", "source_uri", "url")]
+            props: dict[str, Any] = {"label": schema, "summary": {"type": "string"}}
+            required = ["label", "summary"]
+            # Add other columns as optional string props if they look like labels
+            for col in other_labels[:3]:
+                vals = {r.get(col, "") for r in rows[:10]}
+                if any(vals):
+                    props[col] = {"type": "string"}
+            return {"type": "object", "properties": props, "required": required, "additionalProperties": False}, label_column
+    elif suffix in (".jsonl", ".json"):
+        import json as _json
+        items = []
+        if suffix == ".jsonl":
+            for line in path.read_text().splitlines():
+                if line.strip():
+                    items.append(_json.loads(line))
+        else:
+            data = _json.loads(path.read_text())
+            items = data["items"] if isinstance(data, dict) and "items" in data else data
+        if not items:
+            raise ValueError("example file is empty")
+        sample = items[0]
+        # Look for expected claims in metadata or top-level
+        label_column = label_column or "label"
+        return {
             "type": "object",
-            "properties": preset["properties"],
-            "required": preset["required"],
+            "properties": {"label": {"type": "string"}, "summary": {"type": "string"}},
+            "required": ["label", "summary"],
             "additionalProperties": False,
-        },
-    )
+        }, label_column
+    raise ValueError(f"unsupported example format {suffix}; use .csv or .jsonl")
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    from_example = getattr(args, "from_example", None)
+    label_col = getattr(args, "label_column", None)
+    if from_example:
+        example_path = Path(from_example)
+        claims_schema, detected_label = _infer_schema_from_example(example_path, label_col)
+        instructions = f"Classify each item and provide a supported summary. Labels were inferred from column '{detected_label}' in {example_path.name}."
+        preset_name = f"from-example:{example_path.name}"
+        spec = TaskSpec(
+            name=args.name,
+            instructions=instructions,
+            batch_size=args.batch_size,
+            claims_schema=claims_schema,
+        )
+    else:
+        preset = PRESETS[args.preset]
+        preset_name = args.preset
+        spec = TaskSpec(
+            name=args.name,
+            instructions=preset["instructions"],
+            batch_size=args.batch_size,
+            claims_schema={
+                "type": "object",
+                "properties": preset["properties"],
+                "required": preset["required"],
+                "additionalProperties": False,
+            },
+        )
     store = _store(args)
     revision = store.register_task(spec)
     sample_path = Path(args.sample or f"{args.name}.sample.jsonl")
@@ -256,14 +333,16 @@ def cmd_init(args: argparse.Namespace) -> None:
         {
             "created": True,
             "task": spec.name,
-            "preset": args.preset,
+            "preset": preset_name,
             "revision": revision,
             "database": str(store.path.resolve()),
             "sample_input": str(sample_path),
+            "claims_schema": spec.claims_schema,
             "next": f"free-fleet validate {spec.name} --input {sample_path}",
         },
         args.json,
-        f"Created task '{spec.name}' from preset '{args.preset}'.\n"
+        f"Created task '{spec.name}' from '{preset_name}'.\n"
+        f"Claims: {list(spec.claims_schema.get('properties', {}).keys())}\n"
         f"Sample: {sample_path}\nNext: free-fleet validate {spec.name} --input {sample_path}",
     )
 
@@ -273,11 +352,25 @@ def cmd_validate(args: argparse.Namespace) -> None:
     task = _resolve_task(args.task, store)
     items = _load_input(args)
     batches = pack_items(items, task.batch_size, task.max_slice_chars)
+    # Detect long documents that were sliced into partial windows
+    truncated = 0
+    total_slices = 0
+    for b in batches:
+        for itm in b.get("items", b.get("items", [])) if isinstance(b, dict) else []:
+            slices = itm.get("slices", []) if isinstance(itm, dict) else []
+            total_slices += len(slices)
+            if any(s.get("partial") for s in slices):
+                truncated += 1
+    partial_msg = ""
+    if truncated:
+        partial_msg = f"\nWarning: {truncated}/{len(items)} item(s) exceed max_slice_chars={task.max_slice_chars} and were split into {total_slices} windows (lossless sliding window with overlap). Quotes remain verifiable within each window; consider raising --max-slice-chars for fewer windows." if truncated else ""
     _emit(
         ValidationReport(valid=True, task=task.name, input_items=len(items), batches=len(batches)),
         args.json,
-        f"Valid. Task '{task.name}' will process {len(items)} items in {len(batches)} batches.",
+        f"Valid. Task '{task.name}' will process {len(items)} items in {len(batches)} batches.{partial_msg}",
     )
+    if truncated and not args.json:
+        print(partial_msg, file=sys.stderr)
 
 
 def cmd_test(args: argparse.Namespace) -> None:
@@ -384,6 +477,7 @@ def cmd_eval(args: argparse.Namespace) -> None:
         samples=items,
         routes=target_routes,
         expected_claims_key=getattr(args, "expected_claims_col", None),
+        concurrency=int(getattr(args, "concurrency", 4) or 4),
     )
     if args.json:
         _emit(report, True)
@@ -469,6 +563,112 @@ def cmd_doctor(args: argparse.Namespace) -> None:
         raise SystemExit(1)
 
 
+def cmd_quickstart(args: argparse.Namespace) -> None:
+    """Zero-key offline demo: registers demo/fake route, runs bundled examples, writes packet+CSV."""
+    store = _store(args)
+    catalog = RouteCatalog(db_path=store.path)
+    # Ensure demo route exists and is enabled as verified zero-cost
+    catalog.add_route(
+        route_id="demo/fake",
+        provider="demo",
+        cost_per_1k_input=0.0,
+        cost_per_1k_output=0.0,
+        enabled=True,
+        price_state=PriceState.PRICE_OBSERVED_ZERO.value,
+        verification_source="quickstart demo (deterministic)",
+    )
+    # Import here to avoid circular
+    from pathlib import Path as _P
+
+    # Discover bundled examples
+    pkg_root = _P(__file__).resolve().parent
+    # Examples are in repo root /examples; try multiple locations
+    candidates = [
+        _P.cwd() / "examples" / "saas_intelligence",
+        pkg_root.parent / "examples" / "saas_intelligence",
+        _P.cwd() / "free_fleet" / "data",
+    ]
+    # Direct paths to sample files
+    saas_task = pkg_root.parent / "examples" / "saas_intelligence" / "task.json"
+    saas_data = pkg_root.parent / "examples" / "saas_intelligence" / "sample_data.jsonl"
+    cve_task = pkg_root.parent / "examples" / "security_cve_triage" / "task.json"
+    # Fallback if not found (installed wheel)
+    if not saas_task.is_file():
+        saas_task = _P.cwd() / "examples" / "saas_intelligence" / "task.json"
+    if not saas_data.is_file():
+        saas_data = _P.cwd() / "examples" / "saas_intelligence" / "sample_data.jsonl"
+
+    run_id = getattr(args, "run_id", None) or f"demo-{int(time.time())}"
+    output = _P(getattr(args, "output", None) or f"runs/{run_id}/clean_packet.json")
+
+    # Choose first available example task/input
+    task_path = saas_task if saas_task.is_file() else None
+    input_path = saas_data if saas_data.is_file() else None
+    if not task_path or not input_path:
+        # Fallback: create synthetic triage task + tiny input
+        from .models import TaskSpec as _TS
+        spec = _TS(
+            name="demo-triage",
+            instructions="Assign a supported triage priority and explain why.",
+            claims_schema={"type": "object", "properties": {"priority": {"enum": ["high", "medium", "low", "unknown"]}, "reason": {"type": "string"}}, "required": ["priority", "reason"], "additionalProperties": False},
+        )
+        store.register_task(spec)
+        items = load_input_items(str(input_path)) if input_path and _P(str(input_path)).is_file() else [
+            InputItem(item_id="demo_1", text="The checkout button gave a 500 error and blocks purchases."),
+            InputItem(item_id="demo_2", text="Fast shipping and recyclable packaging was appreciated."),
+        ]
+        # Use Engine with demo registry (registered automatically)
+        packet = Engine(task=spec, store=store).run_campaign(
+            raw_items=items,
+            run_id=run_id,
+            input_path=str(input_path) if input_path else "demo-synthetic",
+            concurrency=2,
+            max_attempts=10,
+            output_packet_path=output,
+        )
+    else:
+        spec = load_task_spec(task_path)
+        items = load_input_items(str(input_path))
+        packet = Engine(task=spec, store=store).run_campaign(
+            raw_items=items,
+            run_id=run_id,
+            input_path=str(input_path.resolve()),
+            concurrency=2,
+            max_attempts=10,
+            output_packet_path=output,
+        )
+
+    # Also export CSV alongside JSON
+    csv_output = output.with_suffix(".csv")
+    snapshot = store.run_snapshot(run_id)
+    from .export import export_clean_packet as _export
+    _export(snapshot, csv_output, export_format="csv")
+
+    _emit(
+        {"run_id": run_id, "packet": str(output.resolve()), "csv": str(csv_output.resolve()), "result": packet, "verified": packet["total_verified_records"]},
+        args.json,
+        f"Demo run '{run_id}' completed.\nPacket: {output.resolve()}\nCSV: {csv_output.resolve()}\nVerified records: {packet['total_verified_records']}\nTry: free-fleet status {run_id} --json | free-fleet export {run_id} --format jsonl",
+    )
+
+
+def cmd_db_backup(args: argparse.Namespace) -> None:
+    store = _store(args)
+    dest = Path(args.destination)
+    # Use SQLite backup API (safe while running under WAL)
+    import sqlite3
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with store.connect() as src:
+        with sqlite3.connect(str(dest)) as dst:
+            src.backup(dst)
+    size = dest.stat().st_size if dest.is_file() else 0
+    _emit(
+        {"source": str(store.path.resolve()), "destination": str(dest.resolve()), "bytes": size},
+        args.json,
+        f"Backup created: {dest.resolve()} ({size} bytes) from {store.path.resolve()}",
+    )
+
+
 def cmd_serve(args: argparse.Namespace) -> None:
     from .mcp_server import run_mcp_server
 
@@ -489,8 +689,9 @@ def _policy_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--exclude-route", action="append", help="Exclude specific route ID (can repeat or comma-separate)")
     parser.add_argument("--zdr", action="store_true", help="Require Zero Data Retention upstream")
     parser.add_argument("--no-data-collection", action="store_true", help="Deny provider data collection")
-    parser.add_argument("--max-cost-in", type=float, default=0.0, help="Max cost per 1k input tokens (default: 0.0)")
-    parser.add_argument("--max-cost-out", type=float, default=0.0, help="Max cost per 1k output tokens (default: 0.0)")
+    parser.add_argument("--free-only", action="store_true", help="Restrict to verified zero-cost routes only (explicit; replaces implicit max-cost=0 sentinel)")
+    parser.add_argument("--max-cost-in", type=float, default=0.0, help="Max cost per 1k input tokens (default: 0.0, deprecated: use --free-only)")
+    parser.add_argument("--max-cost-out", type=float, default=0.0, help="Max cost per 1k output tokens (default: 0.0, deprecated: use --free-only)")
     parser.add_argument("--max-request-cost", type=float, default=None, help="Max allowed spend per single request (default: unlimited)")
     parser.add_argument("--openrouter-provider", "--openrouter-providers", dest="openrouter_providers", action="append", help="Upstream OpenRouter inference host preference (can repeat or comma-separate, e.g. Together, DeepInfra)")
     parser.add_argument("--openrouter-order", action="append", help="Upstream OpenRouter provider order preference (can repeat or comma-separate)")
@@ -544,9 +745,11 @@ def build_parser() -> argparse.ArgumentParser:
     tasks = commands.add_parser("tasks", help="List registered task definitions")
     _common(tasks)
 
-    init = commands.add_parser("init", help="Create a typed task from a preset")
+    init = commands.add_parser("init", help="Create a typed task from a preset (or --from-example)")
     init.add_argument("name")
     init.add_argument("--preset", choices=sorted(PRESETS), default="classify")
+    init.add_argument("--from-example", dest="from_example", help="Infer draft claims_schema from a labeled CSV/JSONL (e.g. labels.csv)")
+    init.add_argument("--label-column", help="Column containing labels in --from-example (auto-detected if omitted)")
     init.add_argument("--batch-size", type=int, default=4)
     init.add_argument("--sample", help="Sample input path")
     _common(init)
@@ -556,6 +759,19 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--input", required=True)
     _input_options(validate)
     _common(validate)
+
+    quickstart = commands.add_parser("quickstart", help="One-command offline demo (no API keys)")
+    quickstart.add_argument("--demo", action="store_true", help="Run bundled examples with deterministic fake provider")
+    quickstart.add_argument("--run-id", help="Custom run ID (default: demo-<timestamp>)")
+    quickstart.add_argument("--output", help="Packet output path (default: runs/<run_id>/clean_packet.json)")
+    _common(quickstart)
+
+    db_parser = commands.add_parser("db", help="Database utilities")
+    db_sub = db_parser.add_subparsers(dest="db_command", required=True)
+    backup = db_sub.add_parser("backup", help="Create a SQLite backup file (safe while running)")
+    backup.add_argument("destination", help="Destination file path for the backup (e.g. ./backup.db)")
+    _common(backup, database=True)
+    _common(db_parser, database=True)
 
     test = commands.add_parser("test", help="Run one real inference batch")
     test.add_argument("task", help="Registered task name or TaskSpec JSON path")
@@ -592,6 +808,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_cmd.add_argument("--input", required=True, help="Evaluation dataset (CSV, JSONL, or JSON)")
     eval_cmd.add_argument("--routes", help="Optional comma-separated route IDs to test")
     eval_cmd.add_argument("--expected-claims-col", help="Column/metadata key containing ground-truth claims")
+    eval_cmd.add_argument("--concurrency", type=int, default=4, help="Parallel sample evaluation workers per route (default: 4)")
     _input_options(eval_cmd)
     _common(eval_cmd)
 
@@ -602,7 +819,7 @@ def build_parser() -> argparse.ArgumentParser:
     export = commands.add_parser("export", help="Export a validated packet from a run")
     export.add_argument("run_id")
     export.add_argument("--output")
-    export.add_argument("--format", choices=["json", "csv"], default="json", help="Output format: json or csv")
+    export.add_argument("--format", choices=["json", "csv", "jsonl"], default="json", help="Output format: json, csv, or jsonl (one record per line)")
     _common(export)
 
     schema = commands.add_parser("schema", help="Print an admitted JSON Schema")
@@ -621,11 +838,29 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _maybe_emit_deprecation_notice() -> None:
+    invoked = Path(sys.argv[0]).name
+    if "bulk-lanes" in invoked or "bulk_lanes" in invoked:
+        print(
+            "Warning: `bulk-lanes` is deprecated and will be removed in 0.3.0. Use `free-fleet` instead.",
+            file=sys.stderr,
+        )
+
+
 def main() -> None:
+    _maybe_emit_deprecation_notice()
     parser = build_parser()
     args = parser.parse_args()
     if getattr(args, "global_json", False):
         args.json = True
+    # Handle `db backup` subcommand wrapper
+    if getattr(args, "command", None) == "db":
+        sub = getattr(args, "db_command", None)
+        if sub == "backup":
+            cmd_db_backup(args)
+            return
+        print(f"Unknown db subcommand: {sub}", file=sys.stderr)
+        raise SystemExit(2)
     handlers = {
         "setup": cmd_setup,
         "routes": cmd_routes,
@@ -643,6 +878,7 @@ def main() -> None:
         "schema": cmd_schema,
         "doctor": cmd_doctor,
         "serve": cmd_serve,
+        "quickstart": cmd_quickstart,
     }
     try:
         handlers[args.command](args)

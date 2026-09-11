@@ -43,7 +43,7 @@ dev = [
 
 [project.scripts]
 free-fleet = "free_fleet.cli:main"
-bulk-lanes = "free_fleet.cli:main"
+bulk-lanes = "free_fleet.cli:main"  # deprecated shim, emits warning and will be removed in 0.3.0
 
 [tool.setuptools.packages.find]
 include = ["free_fleet*"]

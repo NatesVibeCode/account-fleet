@@ -281,12 +281,16 @@ class RouteCatalog:
     ) -> List[str]:
         """Returns an intelligently prioritized list of route IDs based on historical performance and eval scores."""
         effective_free_only = free_only
-        if policy and (
-            getattr(policy, "max_cost_per_1k_input", 0.0) > 0
-            or getattr(policy, "max_cost_per_1k_output", 0.0) > 0
-            or getattr(policy, "allowed_routes", None)
-        ):
-            effective_free_only = False
+        if policy is not None:
+            # Explicit --free-only overrides; otherwise paid-aware policy disables free-only filter
+            if getattr(policy, "free_only", False):
+                effective_free_only = True
+            elif (
+                getattr(policy, "max_cost_per_1k_input", 0.0) > 0
+                or getattr(policy, "max_cost_per_1k_output", 0.0) > 0
+                or getattr(policy, "allowed_routes", None)
+            ):
+                effective_free_only = False
         routes = self.get_routes(provider=provider, free_only=effective_free_only)
         if not routes:
             return []

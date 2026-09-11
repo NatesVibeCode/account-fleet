@@ -1,4 +1,9 @@
-"""Exact source-offset grounding verification."""
+"""Exact source-offset grounding with deterministic unicode normalization and fuzzy repair."""
+from __future__ import annotations
+
+import difflib
+import re
+import unicodedata
 from typing import Any
 
 from pydantic import ValidationError
@@ -8,13 +13,134 @@ from .models import CandidateExtractedItem, ExtractedItem, QuoteRef
 class GroundingError(ValueError):
     pass
 
+# Common unicode quirks that LLMs normalize away
+_UNICODE_REPLACEMENTS = {
+    "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'",
+    "\u00a0": " ", "\u201a": "'", "\u201e": '"',
+    "\u2014": "--", "\u2013": "-", "\u2026": "...",
+    "\u2022": "-", "\u00ab": '"', "\u00bb": '"',
+}
+
+def _simple_normalize(text: str) -> str:
+    for k, v in _UNICODE_REPLACEMENTS.items():
+        text = text.replace(k, v)
+    # NFKC for remaining compatibility mappings (ligatures, etc.)
+    text = unicodedata.normalize("NFKC", text)
+    # Collapse whitespace to single spaces for matching purposes
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+def _build_normalized_map(text: str):
+    """Return (normalized_text, map_from_normalized_index -> original_char_index).
+    Built by per-char replacement + NFKC, tracking expansions.
+    """
+    norm_parts: list[str] = []
+    index_map: list[int] = []  # for each char in normalized text, which original index it came from
+    for orig_idx, ch in enumerate(text):
+        replaced = _UNICODE_REPLACEMENTS.get(ch, ch)
+        # NFKC may expand single char
+        nfkc = unicodedata.normalize("NFKC", replaced)
+        # Collapse? We handle whitespace collapse after building per-char map, but we need post-collapse map simplification:
+        # Use raw nfkc chars for now; whitespace collapse will be second pass with approximate mapping.
+        for nc in nfkc:
+            norm_parts.append(nc)
+            index_map.append(orig_idx)
+    raw_norm = "".join(norm_parts)
+    # Now collapse whitespace sequences (e.g. "  " -> " ") and keep map via scanning
+    collapsed_chars: list[str] = []
+    collapsed_map: list[int] = []
+    in_space = False
+    for i, c in enumerate(raw_norm):
+        if c.isspace():
+            if not in_space:
+                collapsed_chars.append(" ")
+                collapsed_map.append(index_map[i])
+                in_space = True
+            # else skip duplicate spaces
+        else:
+            collapsed_chars.append(c)
+            collapsed_map.append(index_map[i])
+            in_space = False
+    # Strip leading/trailing collapsed space without losing map correctness
+    normalized = "".join(collapsed_chars).strip()
+    # Adjust map after strip
+    if raw_norm and raw_norm[0].isspace() and normalized and collapsed_chars and collapsed_chars[0] == " ":
+        # leading space stripped -> remove first entry
+        # collapsed already stripped via .strip() logic but we handled via building; if first char is space, it was kept; now stripped.
+        if normalized and collapsed_chars[0] == " " and raw_norm.lstrip().startswith(collapsed_chars[0]):
+            pass
+    # Rebuild exact trimmed map by re-scanning collapsed with strip positions
+    # For simplicity, rebuild by stripping from both ends using the collapsed representation.
+    start_trim = 0
+    while start_trim < len(collapsed_chars) and collapsed_chars[start_trim].isspace():
+        start_trim += 1
+    end_trim = len(collapsed_chars)
+    while end_trim > start_trim and collapsed_chars[end_trim - 1].isspace():
+        end_trim -= 1
+    return "".join(collapsed_chars[start_trim:end_trim]), collapsed_map[start_trim:end_trim]
+
+def _fuzzy_find_in_slice(candidate_text: str, slice_text: str, min_ratio: float = 0.85) -> tuple[int, int] | None:
+    """Use difflib to find best near-verbatim substring of similar length when exact normalized fails."""
+    cand_norm = _simple_normalize(candidate_text)
+    slice_norm, norm_map = _build_normalized_map(slice_text)
+    if not cand_norm or not slice_norm:
+        return None
+    # Quick ratio pre-check using SequenceMatcher on whole slice? Instead slide window of candidate length ±20%
+    cand_len = len(cand_norm)
+    best_ratio = 0.0
+    best_pos = -1
+    # If candidate is long, use difflib's find_longest_match as heuristic via SequenceMatcher on windows
+    # Slide with step max(1, cand_len // 10) for efficiency
+    step = max(1, cand_len // 8)
+    for start in range(0, max(1, len(slice_norm) - cand_len + 1), step):
+        window = slice_norm[start:start + cand_len + 10]  # allow slight expansion for whitespace diff
+        # Trim window to cand_len for comparison
+        w_trunc = window[:cand_len]
+        ratio = difflib.SequenceMatcher(None, cand_norm, w_trunc).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_pos = start
+            if ratio >= 0.98:
+                break
+    if best_ratio >= min_ratio and best_pos != -1:
+        # Expand match to exact candidate length in normalized space
+        norm_start = best_pos
+        norm_end = norm_start + cand_len
+        # Refine via SequenceMatcher to find actual matching block
+        # Use opcodes to get precise boundaries? For now return mapped original offsets via norm_map
+        try:
+            orig_start = norm_map[norm_start]
+            # Map end: last normalized char's original index +1
+            last_norm_idx = min(norm_end - 1, len(norm_map) - 1)
+            orig_end = norm_map[last_norm_idx] + 1
+            # Extend to include rest of original token if we cut inside a word due to normalization slop
+            # Ensure the extracted original substring normalizes close to candidate
+            # Validate by extracting and renormalizing
+            extracted = slice_text[orig_start:orig_end]
+            if _simple_normalize(extracted) == cand_norm:
+                return orig_start, orig_end
+            # Fallback: expand slightly
+            for delta in (1, 2, 3, 5, 8):
+                for s in (orig_start - delta, orig_start):
+                    for e in (orig_end + delta, orig_end):
+                        if s < 0 or e > len(slice_text):
+                            continue
+                        if _simple_normalize(slice_text[s:e]) == cand_norm:
+                            return s, e
+        except Exception:
+            pass
+    return None
+
 
 def normalize_grounding(
     extracted_items: list[CandidateExtractedItem | dict[str, Any]],
     raw_cards: list[dict[str, Any]],
     min_quote_chars: int = 15,
 ) -> tuple[list[ExtractedItem] | None, str | None]:
-    """Resolve unique quote text to canonical absolute offsets, then verify it."""
+    """Resolve unique quote text to canonical absolute offsets, then verify it.
+    Supports exact, unicode-normalized, and fuzzy fallback matching for LLM quirks
+    (curly quotes, nbsp, em-dash, whitespace collapse, minor typos) before failing.
+    """
     card_map = {str(card["item_id"]): card for card in raw_cards}
     normalized: list[ExtractedItem] = []
 
@@ -39,13 +165,69 @@ def normalize_grounding(
                 start, end = candidate.start, candidate.end
             else:
                 slice_text = source_slice.get("text", "")
+                # 1) Exact match
                 first = slice_text.find(candidate.text)
-                if first < 0:
-                    return None, f"Item '{item.item_id}' quote not found in slice '{candidate.slice_id}'."
-                if slice_text.find(candidate.text, first + 1) >= 0:
-                    return None, f"Item '{item.item_id}' quote is ambiguous in slice '{candidate.slice_id}'; provide exact offsets."
-                start = int(source_slice["start"]) + first
-                end = start + len(candidate.text)
+                if first >= 0:
+                    if slice_text.find(candidate.text, first + 1) >= 0:
+                        return None, f"Item '{item.item_id}' quote is ambiguous in slice '{candidate.slice_id}'; provide exact offsets."
+                    start = int(source_slice["start"]) + first
+                    end = start + len(candidate.text)
+                else:
+                    # 2) Unicode-normalized match via index map
+                    slice_norm, norm_map = _build_normalized_map(slice_text)
+                    cand_norm = _simple_normalize(candidate.text)
+                    norm_first = slice_norm.find(cand_norm)
+                    if norm_first >= 0:
+                        # Check ambiguity in normalized space as well
+                        if slice_norm.find(cand_norm, norm_first + 1) >= 0:
+                            return None, f"Item '{item.item_id}' quote is ambiguous in slice '{candidate.slice_id}' (normalized); provide exact offsets."
+                        # Map normalized offset back to original
+                        try:
+                            orig_start_rel = norm_map[norm_first]
+                            last_idx = min(norm_first + len(cand_norm) - 1, len(norm_map) - 1)
+                            orig_end_rel = norm_map[last_idx] + 1
+                            # Adjust end to cover full token if normalized collapsed chars
+                            # Verify round-trip
+                            extracted = slice_text[orig_start_rel:orig_end_rel]
+                            # If simple extraction doesn't re-normalize exactly, try expand by 1-2 chars
+                            if _simple_normalize(extracted) != cand_norm:
+                                # brute expand search around mapped region
+                                found = False
+                                for d in range(1, 6):
+                                    for s in (max(0, orig_start_rel - d), orig_start_rel):
+                                        for e in (min(len(slice_text), orig_end_rel + d), orig_end_rel):
+                                            if _simple_normalize(slice_text[s:e]) == cand_norm:
+                                                orig_start_rel, orig_end_rel = s, e
+                                                found = True
+                                                break
+                                        if found:
+                                            break
+                                    if found:
+                                        break
+                                if _simple_normalize(slice_text[orig_start_rel:orig_end_rel]) != cand_norm:
+                                    return None, f"Item '{item.item_id}' quote not found in slice '{candidate.slice_id}' (normalized map failed)."
+                            # Use the actual original substring (preserves verbatim verification) but report candidate.text as normalized?
+                            # We must emit a quote whose text exactly matches the slice substring for verify_grounding to pass.
+                            # So use the original slice substring, not the model's curly-quote variant.
+                            candidate_text_for_ref = slice_text[orig_start_rel:orig_end_rel]
+                            start = int(source_slice["start"]) + orig_start_rel
+                            end = start + len(candidate_text_for_ref)
+                            # Store the verbatim slice text (so verify_grounding's exact check passes)
+                            quotes.append(QuoteRef(slice_id=candidate.slice_id, start=start, end=end, text=candidate_text_for_ref))
+                            continue
+                        except Exception:
+                            return None, f"Item '{item.item_id}' quote not found in slice '{candidate.slice_id}'."
+                    else:
+                        # 3) Fuzzy fallback via difflib (minor typos, missing character)
+                        fuzzy = _fuzzy_find_in_slice(candidate.text, slice_text)
+                        if fuzzy is not None:
+                            rel_start, rel_end = fuzzy
+                            candidate_text_for_ref = slice_text[rel_start:rel_end]
+                            start = int(source_slice["start"]) + rel_start
+                            end = start + len(candidate_text_for_ref)
+                            quotes.append(QuoteRef(slice_id=candidate.slice_id, start=start, end=end, text=candidate_text_for_ref))
+                            continue
+                        return None, f"Item '{item.item_id}' quote not found in slice '{candidate.slice_id}'."
 
             quotes.append(QuoteRef(slice_id=candidate.slice_id, start=start, end=end, text=candidate.text))
         normalized.append(ExtractedItem(

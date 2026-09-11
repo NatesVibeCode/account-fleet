@@ -4,9 +4,11 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-Coordinated free LLM worker fleet for high-throughput, evidence-grounded batch processing across free, paid, and local models.
+> **Verified CSV in → Verified CSV out. Every claim cites a verbatim source quote at `[start, end]` character offsets — or the row fails validation and the batch rotates to the next route. No hallucinations pass the gate.**
 
-Run structured classification, entity extraction, summarization, and triage across thousands of records with SQLite checkpointing, character-exact quote grounding, and deterministic verification against source text.
+Coordinated fleet for high-throughput, evidence-grounded batch extraction across free, paid, and local LLMs — with SQLite checkpointing, Bayesian route scoring, and deterministic quote verification.
+
+*Canonical CLI is `free-fleet`. `bulk-lanes` remains as a deprecated shim (removed in 0.3.0).*
 
 ---
 
@@ -52,24 +54,34 @@ Outputs contain structured claims paired with verbatim quotes deterministically 
 
 ## Why You Can Trust the Output
 
-1. **Deterministic Quote Verification**: Cited quotes are verified against the raw source text at character-level precision and resolved to canonical `[start, end]` character offsets. If a model fabricates or alters a cited quote, validation fails and triggers immediate route rotation. *(Note: This deterministically proves that all cited quotes are verbatim source substrings; semantic entailment of claims from quotes is model-generated).*
-2. **Closed JSON Schemas**: Outputs adhere strictly to closed JSON Schemas defined in the `TaskSpec`. Models cannot add unexpected fields, produce unformatted markdown, or drift out of schema.
-3. **Intelligent Route Scoring**: Instead of blind round-robin rotation, `free-fleet` uses Bayesian-smoothed historical scoring based on verification rates, malformed JSON rates, grounding accuracy, and latency. Models that consistently produce verified results are prioritized.
-4. **Non-Destructive Rate-Limit Handling**: When an API returns a `429 Too Many Requests` or `5xx Server Error`, `free-fleet` puts the route in cooldown and retries the batch immediately on an alternative route without burning the batch attempt limit.
-5. **Zero-Price Circuit Breaker & Spend Ceilings**: For zero-price campaigns, route pricing is observed directly from provider receipts; if an unexpected charge occurs, the circuit breaker trips immediately. For paid campaigns, catalog rates and `--max-request-cost` spend ceilings enforce budget boundaries.
+Every output row is gated through deterministic checks *before* it is committed to SQLite. If any check fails, the batch rotates to the next route — nothing unverified is exported.
+
+1. **Deterministic Quote Verification**: Cited quotes are checked against the raw source text at character-level precision and resolved to canonical `[start, end]` offsets. Fabricated or altered quotes fail grounding and trigger immediate route rotation. *(This proves all cited quotes are verbatim source substrings; whether a claim is truly entailed by its quote remains model-generated.)*
+2. **Closed JSON Schemas**: Outputs adhere strictly to closed JSON Schemas defined in `TaskSpec`. Models cannot add fields, emit markdown, or drift out of schema.
+3. **Intelligent Route Scoring**: Bayesian-smoothed scoring by verification rate, grounding accuracy, malformed-JSON rate, and latency — not round-robin. Best routes are tried first.
+4. **Non-Destructive Rate-Limit Handling**: On `429` or `5xx`, the route is cooled down and the batch is retried immediately on the next lane with **0 attempt burn**.
+5. **Zero-Price Circuit Breaker & Spend Ceilings**: For zero-price runs, pricing is observed from provider receipts; a non-zero charge trips the breaker and disables the route. For paid runs, `--max-request-cost` enforces per-request caps.
+
+> **Live proof:** `free-fleet status <run_id> --watch` streams batch progress and per-route `Verified / Rate limits / Latency`. Fabricated quotes show up instantly as `grounding_failed` and the next lane is tried.
 
 ---
 
-## Quickstart
-
-### Installation
+## Quickstart — 60-Second Demo (No API Keys)
 
 ```bash
 git clone https://github.com/NatesVibeCode/free-fleet.git
 python3 -m pip install ./free-fleet
+
+# Deterministic offline demo: creates a temp workspace, registers a fake
+# zero-cost route, runs the bundled examples, and writes a verified packet + CSV.
+free-fleet quickstart --demo
+
+# Outputs:
+#   runs/demo-01/clean_packet.json   (self-validating packet)
+#   runs/demo-01/clean_packet.csv    (flat CSV)
 ```
 
-### Initialize Workspace
+### Real Workspace
 
 ```bash
 mkdir my-workspace && cd my-workspace
@@ -214,6 +226,7 @@ free-fleet resume <run_id>
 
 | Command | Purpose |
 |---|---|
+| `quickstart` | One-command offline demo (no keys) that writes a verified packet + CSV |
 | `setup` | Bootstrap a portable workspace with bundled skills and SQLite database |
 | `doctor` | Check SQLite, installed CLIs, provider authentication, and available routes |
 | `routes` | List or refresh discovered model routes (`--refresh`) |
@@ -221,18 +234,20 @@ free-fleet resume <run_id>
 | `cooldowns` | Inspect active rate-limit route cooldowns or clear them (`--clear`, `--route`) |
 | `tasks` | List registered task definitions |
 | `init` | Create a typed task from a preset (`classify`, `extract`, `triage`, `summarize`) |
+| `init --from-example` | Infer a draft `claims_schema` from a labeled CSV (`--from-example labels.csv --label-column label`) |
 | `validate` | Check task schema and input formatting without inference |
 | `test` | Run one real batch through candidate models |
 | `run` | Create and execute a SQLite-backed resumable run |
 | `resume` | Resume an unfinished run from its SQLite queue |
-| `status` | Show real-time progress, attempts, and route stats (`--watch`) |
-| `eval` | Benchmark routes on sample inputs and update route ranking priors |
+| `status` | Show real-time progress, attempts, and route stats (`--watch`, `--json`) |
+| `eval` | Benchmark routes on sample inputs and update route ranking priors (`--concurrency`) |
 | `sessions` | Inspect recorded worker sessions and audit logs |
-| `export` | Export a validated packet or CSV (`--format csv\|json`) |
+| `export` | Export a validated packet (`--format json\|csv\|jsonl`) |
+| `db backup` | SQLite backup to file (safe while running) |
 | `schema` | Print admitted JSON Schemas or database contracts |
 | `serve` | Run the Model Context Protocol (MCP) server over stdio |
 
-Pass `--json` to any command for machine-readable JSON output.
+Pass `--json` to any command for machine-readable JSON output. `--free-only` is the explicit zero-cost filter (replaces implicit `max-cost=0` sentinel). Long documents are warned when truncated (`partial` slices).
 
 ---
 

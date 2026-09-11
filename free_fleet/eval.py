@@ -34,6 +34,7 @@ class RouteEvaluator:
         route_id: str,
         samples: List[InputItem],
         expected_claims_key: Optional[str] = None,
+        concurrency: int = 4,
     ) -> RouteEvalResult:
         routes_by_id = {r["id"]: r for r in self.catalog.data.get("routes", [])}
         route_info = routes_by_id.get(route_id, {})
@@ -41,15 +42,10 @@ class RouteEvaluator:
         provider = self.registry.resolve(provider_hint, route_id)
 
         total = len(samples)
-        schema_passed = 0
-        grounding_passed = 0
-        correct_count = 0
-        rate_limits = 0
-        errors = 0
-        durations: List[float] = []
+        # Threaded per-sample evaluation for throughput
+        import concurrent.futures as _cf
 
-        # Evaluate sample by sample (or small batch)
-        for item in samples:
+        def _eval_one(item: InputItem) -> dict:
             prompt = self.task.render_prompt([{
                 "item_id": item.item_id,
                 "title": item.title or "",
@@ -60,12 +56,32 @@ class RouteEvaluator:
                     "text": item.text,
                 }]
             }])
-
             ok, response_text, receipt = provider.run_prompt(
                 route_id=route_id,
                 prompt=prompt,
                 system_prompt=self.task.instructions,
             )
+            return {"ok": ok, "response_text": response_text, "receipt": receipt, "item": item}
+
+        # Execute with bounded concurrency
+        if concurrency <= 1 or total <= 1:
+            raw_results = [_eval_one(it) for it in samples]
+        else:
+            with _cf.ThreadPoolExecutor(max_workers=min(concurrency, total)) as ex:
+                raw_results = list(ex.map(_eval_one, samples))
+        # Aggregate
+        schema_passed = 0
+        grounding_passed = 0
+        correct_count = 0
+        rate_limits = 0
+        errors = 0
+        durations: List[float] = []
+
+        for res in raw_results:
+            item = res["item"]
+            ok = res["ok"]
+            response_text = res["response_text"]
+            receipt = res["receipt"]
 
             dur = receipt.get("duration_seconds")
             if dur is not None and dur > 0:
@@ -242,11 +258,20 @@ class RouteEvaluator:
         samples: List[InputItem],
         routes: Optional[List[str]] = None,
         expected_claims_key: Optional[str] = None,
+        concurrency: int = 4,
     ) -> RouteEvalReport:
         target_routes = routes or self.catalog.get_ladder(free_only=True)
         results = []
-        for rid in target_routes:
-            results.append(self.evaluate_route(rid, samples, expected_claims_key=expected_claims_key))
+        # Parallelize across routes as well when multiple routes
+        if len(target_routes) > 1 and concurrency > 1:
+            import concurrent.futures as _cf
+            with _cf.ThreadPoolExecutor(max_workers=min(len(target_routes), 4)) as ex:
+                futures = {ex.submit(self.evaluate_route, rid, samples, expected_claims_key, 1): rid for rid in target_routes}
+                for fut in _cf.as_completed(futures):
+                    results.append(fut.result())
+        else:
+            for rid in target_routes:
+                results.append(self.evaluate_route(rid, samples, expected_claims_key=expected_claims_key, concurrency=concurrency))
 
         # Sort by composite score descending
         results.sort(key=lambda r: r.composite_score, reverse=True)

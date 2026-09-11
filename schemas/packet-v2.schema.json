@@ -405,6 +405,12 @@
           "description": "Max allowed spend per single request",
           "title": "Max Request Cost"
         },
+        "free_only": {
+          "default": false,
+          "description": "Explicit flag to restrict to observed-zero routes only",
+          "title": "Free Only",
+          "type": "boolean"
+        },
         "openrouter_providers": {
           "anyOf": [
             {
