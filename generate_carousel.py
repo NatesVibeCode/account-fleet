@@ -20,7 +20,7 @@ def generate_carousel():
   @page { size: 1080px 1350px; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #faf9f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #141413; -webkit-font-smoothing: antialiased; }
-  .slide { width: 1080px; height: 1350px; page-break-after: always; break-after: page; position: relative; padding: 72px 70px 60px 70px; display: flex; flex-direction: column; justify-content: space-between; background: #faf9f5; background-image: radial-gradient(circle at 1px 1px, rgba(20,20,19,0.075) 1.2px, transparent 0), repeating-linear-gradient(90deg, transparent 0 48px, rgba(20,20,19,0.015) 48px 49px), radial-gradient(ellipse at 50% 0%, rgba(232,228,215,0.9) 0%, transparent 58%); background-size: 20px 20px, 49px 49px, 100% 440px; background-repeat: repeat, repeat, no-repeat; box-shadow: inset 0 0 0 1px #e8e6dc, inset 0 0 110px rgba(232,228,215,0.65), inset 0 1px 0 rgba(255,255,255,0.9); overflow: hidden; }
+  .slide { width: 1080px; height: 1350px; page-break-after: always; break-after: page; position: relative; padding: 52px 60px 32px 60px; display: flex; flex-direction: column; justify-content: flex-start; gap: 28px; background: #faf9f5; background-image: radial-gradient(circle at 1px 1px, rgba(20,20,19,0.065) 1.1px, transparent 0), repeating-linear-gradient(90deg, transparent 0 48px, rgba(20,20,19,0.012) 48px 49px), radial-gradient(ellipse at 50% 0%, rgba(232,228,215,0.75) 0%, transparent 55%); background-size: 20px 20px, 49px 49px, 100% 420px; background-repeat: repeat, repeat, no-repeat; box-shadow: inset 0 0 0 1px #ece9e0, inset 0 0 80px rgba(232,228,215,0.5), inset 0 1px 0 rgba(255,255,255,0.9); overflow: hidden; }
   .slide::before { content: ""; position: absolute; inset: 0; background-image: repeating-linear-gradient(0deg, transparent 0 26px, rgba(20,20,19,0.032) 26px 27px); pointer-events: none; }
   .slide::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 5px; background: #141413; pointer-events: none; }
   .pill-row { display: block; margin-bottom: 20px; }
@@ -54,7 +54,7 @@ def generate_carousel():
   table.mock-table td { padding: 14px 16px; border-bottom: 1px solid #f5f5f0; vertical-align: top; background: #ffffff; }
   .badge { background: #141413; border: 1px solid #141413; color: #faf9f5; font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 10px; letter-spacing: 1px; display: inline-block; }
   .mark { background: #e8e6dc; color: #141413; padding: 1px 4px; border-radius: 4px; font-weight: 600; border: 1px solid #d6d3cd; }
-  .footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e8e6dc; padding-top: 18px; font-size: 12px; font-weight: 500; color: #a8a29e; }
+  .footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e8e6dc; padding-top: 16px; font-size: 12px; font-weight: 500; color: #a8a29e; margin-top: auto; }
   .footer .brand { color: #78716c; } .footer .brand span { color: #141413; font-weight: 700; }
   .footer .page { background: #ffffff; border: 1px solid #e8e6dc; padding: 4px 10px; border-radius: 6px; color: #57534e; font-family: ui-monospace, monospace; font-weight: 600; }
 </style>
