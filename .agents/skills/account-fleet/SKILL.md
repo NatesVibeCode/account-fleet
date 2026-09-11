@@ -12,29 +12,38 @@ Turn a founder or seller's conversational Ideal Customer Profile (ICP) into a ra
 ## The Outbound Account Execution Pipeline
 
 ```
-0. Calibration Interview ──> 1. ICP Deconstruction ──> 2. Discovery Queries ──> 3. Task Spec & Rubric
-                                                                                      │
-                                                                                      ▼
-5. Ranked CSV Export     <── 4. Python Substring Gate <── Free Model Fleet
+0. Context Inference & Gap Interview ──> 1. ICP Deconstruction ──> 2. Discovery Queries ──> 3. Task Spec & Rubric
+                                                                                                  │
+                                                                                                  ▼
+5. Ranked CSV Export                 <── 4. Python Substring Gate <── Free Model Fleet
 ```
 
 ---
 
-## Phase 0: Calibrate the ICP & Profile (The 3-Question Protocol)
+## Phase 0: Autonomous Context Inference & Targeted ICP Calibration
 
-Founders and operators frequently describe their ICP in broad firmographics (e.g. *"I sell database optimization to SaaS companies"*, *"Find me fintech targets"*). 
+Never jump into blind web searches with vague descriptions, and **never interrogate the user with questions about facts you can discover autonomously**.
 
-**Do not jump directly into web searches or rubric generation with vague descriptions.**
+The agent harness must follow a two-step context protocol:
 
-Run the 3-question calibration interview to reverse-engineer their dream accounts into verifiable technical keywords and architecture:
+### Step 1: Autonomous Discovery (History, Memory, & Repo First)
+Before asking the operator anything, inspect:
+1. **Past Sessions & Memories**: Grep conversation history and session transcripts (`<appDataDir>/brain/`) for mentioned customers, competitors, pricing, or target companies.
+2. **Workspace Codebase**: Read `README.md`, package descriptors (`pyproject.toml`, `package.json`), integration code (`connectors/`, `providers/`), and git commits (`git log -n 15`).
+3. **Resolve the 6 Target Signals**:
+   - *Architectural Layer*: Where does the product sit? (e.g. database proxy, eBPF agent, CI/CD runner).
+   - *Required Tech Stack*: What must the prospect run? (e.g. PostgreSQL, Kafka, AWS, Kubernetes).
+   - *Negative Exclusions*: Incompatible architectures (e.g. pure NoSQL/Firebase, serverless-only).
+   - *Target Personas*: Who feels the pain? (e.g. Staff Infra, DBRE, Head of Platform).
+   - *Breaking Point Catalyst*: What scale or failure forces a purchase? (e.g. 50k QPS latency limits, $10k/mo Redis bills).
+   - *Anchor Logos*: 2–3 dream accounts or happy existing customers.
 
-1. **The Breaking Point Catalyst**: *"What is the exact technical breaking point where someone has to buy your product? (e.g., hitting 50k QPS latency limits on Postgres, Redis bills exceeding $10k/mo, or migrating off legacy billing?)"*
-2. **The 2–3 Anchor Logos**: *"Who are 2 or 3 of your happiest existing customers or dream accounts? (e.g., Stripe, PostHog, Supabase)"*
-3. **Non-Negotiable Architecture**: *"What infrastructure or tech stack must they run for your product to work? (e.g., must run Kubernetes, must use Kafka, must be on AWS?)"*
+### Step 2: Gap Analysis & Targeted Interview
+- **The Invariant**: NEVER ask the operator about signals already confirmed from repo or session context.
+- Summarize the inferred company profile to the user with clear evidence.
+- Ask **only** for signals that are genuinely missing or ambiguous (typically the breaking point catalyst or 2–3 anchor logos).
 
-Synthesize the answers into an explicit ICP profile with positive tech triggers, negative stack exclusions, and present a 10-second operator confirmation before running queries.
-
-See [references/icp-interview.md](references/icp-interview.md) for the complete interview playbook and profile synthesis templates.
+See [references/icp-interview.md](references/icp-interview.md) for detailed thought processes, signal definitions, and interview templates.
 
 ---
 
