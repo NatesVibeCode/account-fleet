@@ -675,6 +675,126 @@ def cmd_serve(args: argparse.Namespace) -> None:
     run_mcp_server(args.workspace_root, args.db)
 
 
+def _claude_config_candidates() -> list[Path]:
+    home = Path.home()
+    candidates: list[Path] = []
+    # macOS primary
+    candidates.append(home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json")
+    # Linux / generic XDG
+    candidates.append(home / ".config" / "Claude" / "claude_desktop_config.json")
+    candidates.append(home / ".config" / "claude" / "claude_desktop_config.json")
+    if os.name == "nt" and os.environ.get("APPDATA"):
+        candidates.append(Path(os.environ["APPDATA"]) / "Claude" / "claude_desktop_config.json")
+    return candidates
+
+
+def _cursor_config_path() -> Path:
+    return Path.home() / ".cursor" / "mcp.json"
+
+
+def _existing_mcp_path_for_client(client: str, workspace_root: Path | None = None) -> Path | None:
+    # Try to find existing config; if not found, return default path for that client
+    if client == "claude":
+        for p in _claude_config_candidates():
+            if p.is_file():
+                return p
+        return _claude_config_candidates()[0]
+    if client == "cursor":
+        return _cursor_config_path()
+    return None
+
+
+def cmd_mcp_install(args: argparse.Namespace) -> None:
+    from .setup import installed_cli_path
+
+    workspace_root = Path(getattr(args, "workspace_root", ".")).expanduser().resolve()
+    if not workspace_root.is_dir():
+        raise ValueError(f"workspace root not found: {workspace_root}")
+    db_path = Path(getattr(args, "db", None)).expanduser() if getattr(args, "db", None) else workspace_root / "free-fleet.db"
+    db_path = (db_path if db_path.is_absolute() else workspace_root / db_path).resolve()
+    # Ensure workspace contains DB (setup will create if needed)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cli_cmd = installed_cli_path()
+    server_entry = {
+        "command": cli_cmd,
+        "args": ["serve", "--workspace-root", str(workspace_root), "--db", str(db_path)],
+    }
+
+    target_clients: list[str] = []
+    requested = (getattr(args, "client", "auto") or "auto").lower()
+    if requested == "auto":
+        # Detect existing configs; if none, default to claude
+        found = []
+        for cand in ["claude", "cursor"]:
+            p = _existing_mcp_path_for_client(cand, workspace_root)
+            if p and p.is_file():
+                found.append(cand)
+        target_clients = found if found else ["claude"]
+    elif requested in ("claude", "cursor"):
+        target_clients = [requested]
+    elif requested == "all":
+        target_clients = ["claude", "cursor"]
+    else:
+        raise ValueError(f"unknown --client '{requested}'; use auto, claude, cursor, or all")
+
+    results: list[dict[str, Any]] = []
+    for client in target_clients:
+        config_path = _existing_mcp_path_for_client(client, workspace_root)
+        if config_path is None:
+            continue
+        dry_run = bool(getattr(args, "dry_run", False))
+        # Load existing config or create new
+        existing: dict[str, Any] = {}
+        if config_path.is_file():
+            try:
+                existing = json.loads(config_path.read_text())
+                if not isinstance(existing, dict):
+                    existing = {}
+            except Exception:
+                existing = {}
+
+        servers = existing.get("mcpServers")
+        if not isinstance(servers, dict):
+            servers = {}
+            existing["mcpServers"] = servers
+
+        already = servers.get("free-fleet")
+        needs_update = already != server_entry
+        status = "unchanged" if not needs_update else ("planned" if dry_run else "updated" if already is not None else "created")
+
+        if needs_update and not dry_run:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            servers["free-fleet"] = server_entry
+            # Preserve other keys (e.g., globalShortcut)
+            config_path.write_text(json.dumps(existing, indent=2) + "\n")
+
+        results.append({
+            "client": client,
+            "config_path": str(config_path),
+            "status": status,
+            "server": server_entry,
+            "exists": config_path.is_file(),
+        })
+
+    _emit(
+        {"installed": results, "workspace_root": str(workspace_root), "db": str(db_path), "command": cli_cmd},
+        args.json,
+        "\n".join(
+            f"{r['client']}: {r['status']} at {r['config_path']}\n  -> {r['server']['command']} {' '.join(r['server']['args'])}"
+            for r in results
+        ) + f"\nRestart {', '.join(r['client'] for r in results)} to load free-fleet. Verify with: free-fleet doctor --workspace-root {workspace_root} --json",
+    )
+
+
+def cmd_mcp(args: argparse.Namespace) -> None:
+    sub = getattr(args, "mcp_command", None)
+    if sub == "install":
+        cmd_mcp_install(args)
+        return
+    raise ValueError(f"unknown mcp subcommand '{sub}'")
+
+
 def _input_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--id-column", help="CSV column to use for item ID")
     parser.add_argument("--text-column", help="CSV column to use for source text")
@@ -835,6 +955,17 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--workspace-root", default=".")
     serve.add_argument("--db", help="SQLite path below workspace root")
 
+    mcp = commands.add_parser("mcp", help="MCP client integration")
+    mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
+    mcp_install = mcp_sub.add_parser("install", help="Install MCP server entry into Claude/Cursor config (one-command setup)")
+    mcp_install.add_argument("--client", choices=["auto", "claude", "cursor", "all"], default="auto", help="Target client config to write (default: auto-detect, falls back to claude)")
+    mcp_install.add_argument("--workspace-root", default=".", help="Workspace root for the MCP server (default: .)")
+    mcp_install.add_argument("--db", help="SQLite path below workspace root (default: <workspace>/free-fleet.db)")
+    mcp_install.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    mcp_install.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    # Note: --db and --json are also added via _common but we keep explicit for discoverability
+    mcp_install.add_argument("--force", action="store_true", help="Overwrite existing free-fleet entry even if identical (no-op otherwise)")
+
     return parser
 
 
@@ -853,7 +984,7 @@ def main() -> None:
     args = parser.parse_args()
     if getattr(args, "global_json", False):
         args.json = True
-    # Handle `db backup` subcommand wrapper
+    # Handle `db backup` and `mcp install` subcommand wrappers
     if getattr(args, "command", None) == "db":
         sub = getattr(args, "db_command", None)
         if sub == "backup":
@@ -861,6 +992,9 @@ def main() -> None:
             return
         print(f"Unknown db subcommand: {sub}", file=sys.stderr)
         raise SystemExit(2)
+    if getattr(args, "command", None) == "mcp":
+        cmd_mcp(args)
+        return
     handlers = {
         "setup": cmd_setup,
         "routes": cmd_routes,

@@ -245,6 +245,7 @@ free-fleet resume <run_id>
 | `export` | Export a validated packet (`--format json\|csv\|jsonl`) |
 | `db backup` | SQLite backup to file (safe while running) |
 | `schema` | Print admitted JSON Schemas or database contracts |
+| `mcp install` | One-command Claude/Cursor setup (auto-wires `claude_desktop_config.json` / `mcp.json`) |
 | `serve` | Run the Model Context Protocol (MCP) server over stdio |
 
 Pass `--json` to any command for machine-readable JSON output. `--free-only` is the explicit zero-cost filter (replaces implicit `max-cost=0` sentinel). Long documents are warned when truncated (`partial` slices).
@@ -255,6 +256,16 @@ Pass `--json` to any command for machine-readable JSON output. `--free-only` is 
 
 `free-fleet` includes a Model Context Protocol (MCP) server for integration into Cursor, Claude Desktop, Antigravity, and other agent environments:
 
+**One-command install (recommended for GTM folks):**
+```bash
+free-fleet mcp install --workspace-root "$PWD"  # auto-detects Claude/Cursor, writes mcpServers entry
+# Preview first
+free-fleet mcp install --dry-run --json
+free-fleet doctor --workspace-root "$PWD" --json  # verify
+# Restart Claude/Cursor to load
+```
+
+Manual entry:
 ```json
 {
   "mcpServers": {
