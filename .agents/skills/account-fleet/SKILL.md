@@ -9,14 +9,32 @@ Turn a founder or seller's conversational Ideal Customer Profile (ICP) into a ra
 
 ---
 
-## The 5-Phase Outbound Pipeline
+## The Outbound Account Execution Pipeline
 
 ```
-1. ICP Deconstruction ──> 2. Discovery Queries ──> 3. Task Spec & Rubric
-                                                           │
-                                                           ▼
-5. Ranked CSV Export  <── 4. Python Substring Gate <── Free Model Fleet
+0. Calibration Interview ──> 1. ICP Deconstruction ──> 2. Discovery Queries ──> 3. Task Spec & Rubric
+                                                                                      │
+                                                                                      ▼
+5. Ranked CSV Export     <── 4. Python Substring Gate <── Free Model Fleet
 ```
+
+---
+
+## Phase 0: Calibrate the ICP & Profile (The 3-Question Protocol)
+
+Founders and operators frequently describe their ICP in broad firmographics (e.g. *"I sell database optimization to SaaS companies"*, *"Find me fintech targets"*). 
+
+**Do not jump directly into web searches or rubric generation with vague descriptions.**
+
+Run the 3-question calibration interview to reverse-engineer their dream accounts into verifiable technical keywords and architecture:
+
+1. **The Breaking Point Catalyst**: *"What is the exact technical breaking point where someone has to buy your product? (e.g., hitting 50k QPS latency limits on Postgres, Redis bills exceeding $10k/mo, or migrating off legacy billing?)"*
+2. **The 2–3 Anchor Logos**: *"Who are 2 or 3 of your happiest existing customers or dream accounts? (e.g., Stripe, PostHog, Supabase)"*
+3. **Non-Negotiable Architecture**: *"What infrastructure or tech stack must they run for your product to work? (e.g., must run Kubernetes, must use Kafka, must be on AWS?)"*
+
+Synthesize the answers into an explicit ICP profile with positive tech triggers, negative stack exclusions, and present a 10-second operator confirmation before running queries.
+
+See [references/icp-interview.md](references/icp-interview.md) for the complete interview playbook and profile synthesis templates.
 
 ---
 
