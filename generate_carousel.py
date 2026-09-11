@@ -1,10 +1,11 @@
-"""Generate 4-slide LinkedIn carousel — Automated Research Suite.
+"""Generate 5-slide LinkedIn carousel — Automated Research Suite.
 
-Universal typography, styling, and sizing system across all 4 slides:
-- Slide 1: Accounts scored, sorted, and backed by proof (every row carries its source quote)
-- Slide 2: The 4-Layer Filter — how 1,000 accounts become 25 with evidence (account research example)
-- Slide 3: Quote must match the source exactly (QuoteRef verification you can run yourself)
-- Slide 4: Run it where you already chat — Claude, Codex, Cursor, Grokbot, Antigravity
+Universal typography, styling, and sizing system across all 5 slides:
+- Slide 1: Title — Research and score anything, at scale, for free (your target accounts, docs, anything)
+- Slide 2: Accounts scored, sorted, and backed by proof (every row carries its source quote)
+- Slide 3: The 4-Layer Filter — how 1,000 accounts become 25 with evidence (account research example)
+- Slide 4: Quote must match the source exactly (QuoteRef verification you can run yourself)
+- Slide 5: Run it where you already chat — Claude, Codex, Cursor, Grokbot, Antigravity
 """
 
 from pathlib import Path
@@ -404,13 +405,30 @@ def generate_carousel():
 <body>
 
 <!-- ======================================================================= -->
-<!-- SLIDE 1: THE DELIVERABLE (COVER HOOK)                                   -->
+<!-- SLIDE 1: TITLE — SIMPLE BABY                                            -->
+<!-- ======================================================================= -->
+<div class="slide">
+  <div>
+    <div class="hero" style="font-size:76px; line-height:0.92;">
+      Research<br/>and score<br/><span class="accent">anything,</span><br/>at scale,<br/>for free.
+    </div>
+    <div class="sub" style="font-size:24px; margin-top:16px;">
+      Your target accounts. Your docs. Your criteria.<br/>All scored, sorted, and backed by proof.
+    </div>
+  </div>
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:12px; font-size:13px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#788c5d;"><span style="width:8px; height:8px; background:#788c5d; border-radius:50%; display:inline-block;"></span> Try with your own list in 30s</div>
+    <div style="font-size:16px; color:#57534e; line-height:1.5; margin-top:6px;"><span style="font-family:ui-monospace; background:#faf9f5; border:1px solid #e8e6dc; padding:2px 8px; border-radius:6px;">free-fleet quickstart --demo</span> → no keys, no data leaves your machine</div>
+    <div style="font-size:13px; color:#a8a29e; margin-top:8px;">Automated Research Suite • MIT • runs anywhere</div>
+  </div>
+  <div class="footer"><div class="brand"><span>free-fleet</span> // research and score anything</div><div class="page">01 / 05</div></div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- SLIDE 2: THE DELIVERABLE (COVER HOOK)                                   -->
 <!-- ======================================================================= -->
 <div class="slide">
   <div class="slide-header">
-    <div class="pill-row">
-      <div class="tag-pill green"><span class="dot"></span>The Deliverable</div>
-    </div>
     <div class="hero">
       Accounts scored, sorted,<br/>and <span class="accent">backed by proof.</span>
     </div>
@@ -501,9 +519,6 @@ def generate_carousel():
 <!-- ======================================================================= -->
 <div class="slide">
   <div class="slide-header">
-    <div class="pill-row">
-      <div class="tag-pill purple"><span class="dot"></span>The Method</div>
-    </div>
     <div class="hero">
       The 4-Layer Filter.<br/>From 1,000 down<br/><span class="accent">to the top 25.</span>
     </div>
@@ -583,9 +598,6 @@ def generate_carousel():
 <!-- ======================================================================= -->
 <div class="slide">
   <div class="slide-header">
-    <div class="pill-row">
-      <div class="tag-pill green"><span class="dot"></span>The Proof System</div>
-    </div>
     <div class="hero">
       Don’t trust AI summaries.<br/><span class="accent-green">Require exact quotes.</span>
     </div>
@@ -651,9 +663,6 @@ def generate_carousel():
 <!-- ======================================================================= -->
 <div class="slide">
   <div class="slide-header">
-    <div class="pill-row">
-      <div class="tag-pill"><span class="dot"></span>Actionable Workflow</div>
-    </div>
     <div class="hero">
       Run it where<br/>you already chat.
     </div>
