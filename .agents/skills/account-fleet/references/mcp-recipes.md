@@ -33,7 +33,7 @@ Via MCP tool `free_fleet_init` (or CLI `account-fleet init`):
 ```json
 {
   "task_name": "db-monitoring-qualification",
-  "preset": "score",
+  "preset": "account-research",
   "instructions": "Evaluate target accounts for database monitoring fit. Score 85-100 if the company explicitly mentions high QPS, latency bottlenecks, or database scaling in PostgreSQL/MySQL. Require exact verbatim quotes of the bottleneck. Score < 50 if no database scaling issues exist."
 }
 ```

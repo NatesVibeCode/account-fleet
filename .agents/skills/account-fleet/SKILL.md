@@ -1,6 +1,6 @@
 ---
 name: account-fleet
-description: Turn conversational ICPs into scored, verified target account deliverables using free models, public job posts (Ashby, Greenhouse), and character-exact quote verification. Use when discovering, researching, scoring, and ranking target accounts with zero hallucinations.
+description: Turn conversational ICPs into scored target account deliverables using free models, public job posts (Ashby, Greenhouse), and character-exact quote verification. Use when discovering, researching, scoring, and ranking target accounts with traceable source evidence.
 ---
 
 # Account Fleet: Target Account Research & Scoring Skill
@@ -28,7 +28,7 @@ The agent harness must follow a two-step context protocol:
 
 ### Step 1: Autonomous Discovery (History, Memory, & Repo First)
 Before asking the operator anything, inspect:
-1. **Past Sessions & Memories**: Grep conversation history and session transcripts (`<appDataDir>/brain/`) for mentioned customers, competitors, pricing, or target companies.
+1. **Provided Context**: Use relevant prior context available in the current conversation or explicitly provided by the user. Do not assume another computer has a particular history folder or search unrelated local conversations.
 2. **Workspace Codebase**: Read `README.md`, package descriptors (`pyproject.toml`, `package.json`), integration code (`connectors/`, `providers/`), and git commits (`git log -n 15`).
 3. **Resolve the 6 Target Signals**:
    - *Architectural Layer*: Where does the product sit? (e.g. database proxy, eBPF agent, CI/CD runner).
@@ -133,7 +133,7 @@ Run the batch campaign through free model routes (OpenRouter / OpenCode / Local 
 
 ```bash
 # Initialize task
-account-fleet init target-research --preset score
+account-fleet init target-research --preset account-research
 
 # Run campaign across accounts.csv
 account-fleet run target-research \
@@ -150,7 +150,7 @@ Every model claim must include an exact quote. Under the hood:
 ```python
 assert quote in raw_text
 ```
-- If the model hallucinated, paraphrased, or changed one character, the check fails and the attempt rotates.
+- If a cited quote is fabricated, paraphrased, or changed by one character, the check fails and the attempt rotates. A real quote does not prove that the score or claimed gap follows from it; review high-priority accounts against the source and the agreed ICP.
 - If verified, the exact character range `[start, end]` and source URI are committed to SQLite.
 
 ---

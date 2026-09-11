@@ -2,11 +2,28 @@
 from __future__ import annotations
 
 from typing import Dict, Optional
+import re
+import os
+import shutil
 from .base import BaseProvider
 from .demo import DemoProvider
 from .opencode import OpenCodeProvider
 from .openai_compatible import OpenAICompatibleProvider
 from .openrouter import OpenRouterProvider
+
+
+def configured_routes(routes: list[dict]) -> list[dict]:
+    """Routes whose own transport is configured; does not prove live authentication."""
+    registry = ProviderRegistry()
+    def available(route: dict) -> bool:
+        name = (route.get("provider") or "").lower()
+        if name == "opencode":
+            return bool(shutil.which("opencode"))
+        if name == "openrouter":
+            return bool(os.environ.get("OPENROUTER_API_KEY"))
+        provider = registry.get(name)
+        return isinstance(provider, OpenAICompatibleProvider) and (provider.is_local or bool(provider.api_key))
+    return [route for route in routes if available(route)]
 
 
 class ProviderRegistry:
@@ -36,11 +53,7 @@ class ProviderRegistry:
             return self._providers[provider_hint.lower()]
 
         # Fallback to route_id prefix if provider_hint is absent or unknown
-        prefix = ""
-        if "/" in route_id:
-            prefix = route_id.split("/", 1)[0].lower()
-        elif ":" in route_id:
-            prefix = route_id.split(":", 1)[0].lower()
+        prefix = re.split(r"[/:]", route_id, maxsplit=1)[0].lower()
         if prefix in self._providers:
             return self._providers[prefix]
 

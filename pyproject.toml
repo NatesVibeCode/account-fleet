@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "account-fleet"
-version = "0.2.3"
+version = "0.2.4"
 description = "Research and score target accounts for free with exact quote verification."
 readme = "README.md"
 license = "MIT"
@@ -56,6 +56,10 @@ free_fleet = [
     "resources/skill/*.md",
     "resources/skill/references/*.md",
     "resources/skill/agents/*.yaml",
+    "resources/account_skill/*.md",
+    "resources/account_skill/references/*.md",
+    "resources/examples/account_research/*.json",
+    "resources/examples/account_research/*.csv",
 ]
 
 [tool.setuptools.data-files]

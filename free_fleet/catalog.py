@@ -251,7 +251,7 @@ class RouteCatalog:
                 count = 0
                 is_local = provider.is_local
                 price_state = PriceState.PRICE_OBSERVED_ZERO.value if is_local else PriceState.UNKNOWN.value
-                cost = 0.0 if is_local else 0.0
+                cost = 0.0 if is_local else None
                 for m in models:
                     mid = m.get("id")
                     if not mid:
@@ -292,6 +292,14 @@ class RouteCatalog:
             ):
                 effective_free_only = False
         routes = self.get_routes(provider=provider, free_only=effective_free_only)
+        # Demo output is synthetic and must never enter a real campaign implicitly.
+        routes = [r for r in routes if r.get("provider") != "demo" or (
+            policy is not None and (
+                r["id"] in (getattr(policy, "allowed_routes", None) or [])
+                or "demo" in (getattr(policy, "allowed_transports", None) or [])
+                or "demo" in (getattr(policy, "allowed_providers", None) or [])
+            )
+        )]
         if not routes:
             return []
         from .scoring import filter_and_rank_routes

@@ -4,11 +4,15 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-> **Research and score target accounts for free with character-exact evidence. Every qualification cites a verbatim source quote at `[start, end]` character offsets — or the account is automatically discarded. Zero hallucinations pass the gate.**
+> **Research and score target accounts with traceable source evidence. Quotes are checked against the source at exact character offsets. Scores and interpretations still need human review.**
 
 Local outbound intelligence engine for high-throughput, evidence-grounded account research across free, paid, and local LLMs — with SQLite checkpointing, 4-layer compounding funnels, and deterministic quote verification.
 
 *Canonical CLI is `account-fleet`. (`free-fleet` remains available as an alias).*
+
+Python 3.10+ is required. This is a command-line tool with an optional AI-assistant integration. It scores source text you supply; the CLI does not browse for companies or fetch job postings automatically. The bundled account-fleet skill guides a connected assistant through that research.
+
+Install and try the offline demo below before running a real list. Real research requires a configured model provider and your own qualification criteria.
 
 ---
 
@@ -39,16 +43,14 @@ account-fleet run research-demo --input accounts.csv --id-column company --text-
 account-fleet export campaign-01 --format csv --sort-by score --desc --top 25 --rank --output ranked_accounts.csv
 ```
 
-### 3. Output (`results.csv`)
+### 3. Output (`ranked_accounts.csv`)
 
 ```csv
-item_id,priority,reason,primary_quote_text,quote_count,source_uri,source_digest
-fb_1,high,"Checkout button failure blocks user purchase","checkout button gave a 500 error",1,"",a8f110...
-fb_2,low,"Positive customer feedback on eco packaging","packaging was completely recyclable",1,"",4c2b81...
-fb_3,medium,"Support request regarding invoice remains unanswered","never answered my email about the missing invoice",1,"",9e11fd...
+rank,item_id,score,identified_gap,fit_tier,primary_quote_text
+1,stripe.com,92,"Legacy billing migration",tier_1,"lead migration off legacy v1 billing pipeline to Kafka"
 ```
 
-Outputs contain structured claims paired with verbatim quotes deterministically verified against the raw source text.
+Illustrative values only; real exports also include source URLs, digests, and quote details. Set your ICP and scoring rubric through `init --instructions` or a task JSON file. An exact source quote proves the text exists, not that a company will buy your product.
 
 ---
 
@@ -69,24 +71,39 @@ Every output row is gated through deterministic checks *before* it is committed 
 ## Quickstart — 60-Second Demo (No API Keys)
 
 ```bash
-git clone https://github.com/NatesVibeCode/free-fleet.git
-python3 -m pip install ./free-fleet
+git clone https://github.com/NatesVibeCode/account-fleet.git
+cd account-fleet
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install .
 
-# Deterministic offline demo: creates a temp workspace, registers a fake
-# zero-cost route, runs the bundled examples, and writes a verified packet + CSV.
-free-fleet quickstart --demo
+# Run in your own workspace; output files are written in the current directory.
+mkdir my-workspace
+cd my-workspace
+account-fleet setup
+account-fleet quickstart --demo --run-id demo-01
 
 # Outputs:
 #   runs/demo-01/clean_packet.json   (self-validating packet)
 #   runs/demo-01/clean_packet.csv    (flat CSV)
 ```
 
+On Windows PowerShell, replace the two virtual-environment commands with `py -m venv .venv` and `.venv\Scripts\Activate.ps1`. If activation is restricted, run `..\.venv\Scripts\account-fleet.exe` directly from `my-workspace`.
+
+The demo uses synthetic scores for ten bundled sample accounts and makes no model API calls. It verifies installation and export, not research quality. Demo routes are excluded from real campaigns unless explicitly selected.
+
 ### Real Workspace
 
 ```bash
 mkdir my-workspace && cd my-workspace
-free-fleet setup --workspace-root "$PWD" --refresh-routes
+account-fleet setup --workspace-root . --refresh-routes
 ```
+
+For a real run, configure OpenCode with your own provider access, set `OPENROUTER_API_KEY`, or register a running local model, for example `account-fleet routes add ollama/your-installed-model --provider ollama --free`. Refreshing routes alone does not authenticate you. `account-fleet doctor` checks configuration; `account-fleet test research-demo --input accounts.csv --id-column company --text-column careers_text --provider ollama` tests a real batch before a large campaign.
+
+Each named provider uses its own settings: `OLLAMA_BASE_URL`, `LMSTUDIO_BASE_URL`, `GROQ_API_KEY`, and so on. `OPENAI_COMPATIBLE_BASE_URL` and `OPENAI_COMPATIBLE_API_KEY` configure only `--provider openai_compatible`. Environment variables must be available to the process running the CLI or MCP server; `.env` files are not loaded automatically.
+
+`setup` installs both the account-fleet research skill and the free-fleet execution skill in the workspace's `.agents/skills` directory. Keep the virtual environment in place when using the generated MCP configuration. Install account-fleet and free-fleet in separate environments: they share the `free_fleet` Python package and compatibility commands.
 
 ### Presets
 

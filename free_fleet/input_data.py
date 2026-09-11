@@ -99,7 +99,18 @@ def _resolve_only_ids(only_ids: set[str] | list[str] | str | Path | None) -> set
     if isinstance(only_ids, (set, list)):
         return {str(x).strip() for x in only_ids if str(x).strip()}
 
-    candidate = Path(only_ids) if isinstance(only_ids, Path) or (isinstance(only_ids, str) and (Path(only_ids).is_file() or ("," not in only_ids and "." in only_ids))) else None
+    candidate = None
+    if isinstance(only_ids, Path):
+        candidate = only_ids.expanduser()
+    elif isinstance(only_ids, str) and not any(c in only_ids for c in ",;\n"):
+        path = Path(only_ids).expanduser()
+        try:
+            if path.is_file() or path.suffix.lower() in {".csv", ".json", ".jsonl", ".txt"}:
+                candidate = path
+        except OSError:
+            pass
+    if candidate is not None and not candidate.is_file():
+        raise InputDataError(f"ID filter file not found: {candidate}")
 
     if candidate and candidate.is_file():
         suffix = candidate.suffix.lower()
@@ -289,6 +300,8 @@ def load_input_items(
 
     target_ids = _resolve_only_ids(only_ids)
     if target_ids is not None:
+        if suffix == ".csv":
+            target_ids = {value.replace(" ", "_").replace("/", "_").replace(":", "_") for value in target_ids}
         items = [
             item for item in items
             if item.item_id in target_ids

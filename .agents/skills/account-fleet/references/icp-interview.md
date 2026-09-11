@@ -13,8 +13,8 @@ Only after this autonomous discovery phase should the harness perform a gap anal
 Before prompting the operator, the harness executes these autonomous discovery steps:
 
 ### A. Inspect Past Sessions, Transcripts, & Agent Memories
-- **Transcripts**: Search the active conversation history and past session transcripts (`<appDataDir>/brain/<conversation-id>/.system_generated/logs/transcript.jsonl`).
-- **Memory & Scratchpads**: Check agent scratchpads, user rules, and global memories.
+- **Transcripts**: Use the current conversation and relevant history explicitly supplied by the user. There is no required history directory; missing history must not block a fresh install.
+- **Memory & Scratchpads**: Use relevant context already available within the user's selected project. Do not search unrelated personal conversations.
 - **Search Patterns**: Grep for customer discussions, target industries, competitor comparisons, and pricing:
   ```bash
   grep -Ei "customer|client|target|prospect|competitor|pricing|enterprise" <transcript_path>

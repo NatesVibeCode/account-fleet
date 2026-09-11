@@ -27,7 +27,8 @@ def test_setup_installs_bundled_skill_and_database_idempotently(tmp_path):
     assert second.actions[0].status == "unchanged"
     assert Path(first.skill_path, "SKILL.md").is_file()
     assert BulkLanesStore(first.database).schema_version() == "2"
-    assert first.stdio_server.command.endswith("free-fleet")
+    assert Path(first.stdio_server.command).stem in {"account-fleet", "free-fleet", "bulk-lanes"}
+    assert Path(first.skill_path).with_name("account-fleet").joinpath("SKILL.md").is_file()
     assert first.database in first.stdio_server.args
     assert first.ready is False  # packaged route hints are not fresh price evidence
 
@@ -128,3 +129,14 @@ def test_all_distributed_skill_copies_match():
     for root in [repository / "skills/free-fleet", repository / ".agents/skills/free-fleet"]:
         actual = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
         assert actual == expected
+
+
+def test_account_skill_and_examples_are_bundled():
+    repository = Path(__file__).resolve().parents[1]
+    resources = repository / "free_fleet/resources"
+    expected = {p.relative_to(resources / "account_skill"): p.read_bytes() for p in (resources / "account_skill").rglob("*") if p.is_file()}
+    assert expected
+    for root in [repository / "skills/account-fleet", repository / ".agents/skills/account-fleet"]:
+        assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == expected
+    for name in ("task.json", "sample_accounts.csv"):
+        assert (resources / "examples/account_research" / name).read_bytes() == (repository / "examples/account_research" / name).read_bytes()

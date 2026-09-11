@@ -292,7 +292,10 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
             DoctorCheck(name="openrouter", ok=openrouter, detail="configured" if openrouter else "optional key not configured"),
             DoctorCheck(name="routes", ok=bool(routes), detail=f"{len(routes)} enabled observed-zero routes"),
         ]
-        ready = checks[0].ok and checks[3].ok and (checks[1].ok or checks[2].ok)
+        from .providers.registry import configured_routes
+        usable = configured_routes(routes)
+        checks.append(DoctorCheck(name="configured_routes", ok=bool(usable), detail=f"{len(usable)} routes have their own transport configured; live authentication is not tested"))
+        ready = checks[0].ok and bool(usable)
         return DoctorReport(ready=ready, database=str(store.path), checks=checks)
 
     return server
