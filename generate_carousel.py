@@ -395,15 +395,36 @@ def generate_carousel():
 <body>
 
 <!-- ======================================================================= -->
-<!-- SLIDE 1: TITLE — OPERATOR STATEMENT IN BIG LETTERS                     -->
+<!-- SLIDE 1: TITLE — BALANCED, COLORFUL COVER HOOK                          -->
 <!-- ======================================================================= -->
-<div class="slide" style="justify-content:center; align-items:center; text-align:center; padding: 96px 60px;">
-  <div style="display:flex; flex-direction:column; align-items:center; gap:26px; width:100%; max-width:960px;">
-    <div class="hero" style="font-size:72px; line-height:1.02; letter-spacing:-2.2px; text-align:center;">
-      I created a tool for you to research and score anything on the public internet at scale <span class="accent">for free</span>, like target accounts...
+<div class="slide" style="justify-content:space-between; padding: 80px 75px 60px 75px;">
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <div class="tag-pill green"><span class="dot"></span>Open Source Research Tool</div>
+    <div style="font-size:14px; font-weight:700; color:#788c5d; background:rgba(120,140,93,0.12); border:1px solid #c7d8be; padding:8px 16px; border-radius:9999px; letter-spacing:0.5px;">
+      100% Free &amp; Local
     </div>
-    <div style="font-family:ui-monospace; font-size:14px; color:#a8a29e; text-align:center; margin-top:16px;">
-      github.com/NatesVibeCode/free-fleet • MIT • 100% local
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:36px; margin: auto 0;">
+    <div style="font-size:74px; font-weight:900; line-height:1.06; letter-spacing:-2.5px; color:#141413;">
+      I created a tool for you to<br/>
+      <span style="color:#6a9bcc;">research and score anything</span><br/>
+      on the public internet at scale<br/>
+      <span style="color:#788c5d;">for free</span>, like target accounts...
+    </div>
+    
+    <div style="font-size:26px; font-weight:600; color:#57534e; line-height:1.48; border-left:5px solid #6a9bcc; padding-left:24px; max-width:880px;">
+      Point it at live docs, career pages, or homepages. Extract verified technical gaps with character-exact evidence into your spreadsheets.
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #e8e6dc; padding-top:24px;">
+    <div style="font-family:ui-monospace; font-size:15px; font-weight:700; color:#141413;">
+      github.com/NatesVibeCode/free-fleet
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; font-size:15px; font-weight:700; color:#57534e;">
+      <span>Swipe to see how it works</span>
+      <span style="font-size:18px; color:#d97757;">→</span>
     </div>
   </div>
 </div>
@@ -696,7 +717,7 @@ def generate_carousel():
     </div>
 
     <div style="background:#ffffff; border:1px solid #e8e6dc; border-radius:12px; padding:18px 20px; text-align:center;">
-      <div style="font-size:15px; color:#57534e; line-height:1.5;">I made a tool to research anything for free — on GitHub.<br/><span style="font-family:ui-monospace; color:#141413; font-weight:700;">github.com/NatesVibeCode/free-fleet</span> <span style="color:#a8a29e;">• MIT • runs locally</span></div>
+      <div style="font-size:15px; color:#57534e; line-height:1.5;">I made a tool to research anything for free — on GitHub.<br/><span style="font-family:ui-monospace; color:#141413; font-weight:700;">github.com/NatesVibeCode/free-fleet</span> <span style="color:#a8a29e;">• 100% free • runs locally</span></div>
     </div>
   </div>
 
