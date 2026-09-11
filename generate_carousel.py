@@ -43,20 +43,21 @@ def generate_carousel():
     flex-direction: column;
     justify-content: space-between;
     background: #faf9f5;
-    /* subtle warm paper texture — hairline grain + vignette */
+    /* warm paper texture — paper grain + ruled lines + edge vignette */
     background-image:
-      radial-gradient(circle at 1px 1px, rgba(20,20,19,0.04) 1px, transparent 0),
-      radial-gradient(ellipse at 50% 0%, rgba(231,230,220,0.7) 0%, transparent 60%);
-    background-size: 22px 22px, 100% 420px;
-    background-repeat: repeat, no-repeat;
-    box-shadow: inset 0 0 0 1px #ece9e0, inset 0 0 90px rgba(232,230,220,0.55);
+      radial-gradient(circle at 1px 1px, rgba(20,20,19,0.075) 1.2px, transparent 0),
+      repeating-linear-gradient(90deg, transparent 0 48px, rgba(20,20,19,0.015) 48px 49px),
+      radial-gradient(ellipse at 50% 0%, rgba(232,228,215,0.9) 0%, transparent 58%);
+    background-size: 20px 20px, 49px 49px, 100% 440px;
+    background-repeat: repeat, repeat, no-repeat;
+    box-shadow: inset 0 0 0 1px #e8e6dc, inset 0 0 110px rgba(232,228,215,0.65), inset 0 1px 0 rgba(255,255,255,0.9);
     overflow: hidden;
   }
   .slide::before {
     content: "";
     position: absolute;
     inset: 0;
-    background-image: repeating-linear-gradient(0deg, transparent 0 28px, rgba(20,20,19,0.017) 28px 29px);
+    background-image: repeating-linear-gradient(0deg, transparent 0 26px, rgba(20,20,19,0.032) 26px 27px);
     pointer-events: none;
   }
   .slide::after {
@@ -760,8 +761,8 @@ def generate_carousel():
 
   <!-- Footer -->
   <div class="slide-footer">
-    <div class="f-brand"><span>free-fleet</span> // open-source evidence engine</div>
-    <div class="f-page">01 / 04 →</div>
+    <div class="f-brand"><span>free-fleet</span> // research suite for account research</div>
+    <div class="f-page">01 / 05 →</div>
   </div>
 </div>
 
@@ -776,14 +777,14 @@ def generate_carousel():
   <div>
     <div class="pill-row">
       <div class="tag-pill">
-        <span class="dot"></span>Layers 1 &amp; 2 • Automated Funnel
+        <span class="dot"></span>Account Research • Layers 1 &amp; 2
       </div>
     </div>
     <div class="hero-numbers" style="font-size: 60px;">
-      418 batches <span style="font-size: 38px; color: #64748B;">(15m)</span> <span class="accent-cyan">→</span> 100 batches <span style="font-size: 38px; color: #64748B;">(4m)</span>
+      418 batches <span style="font-size: 38px; color: #78716c;">(15m)</span> <span class="accent-cyan">→</span> 100 batches <span style="font-size: 38px; color: #78716c;">(4m)</span>
     </div>
-    <p style="font-size: 20px; color: #94A3B8; margin-top: 6px;">
-      Automated scraping lanes filter 94% of raw noise before deep enrichment.
+    <p style="font-size: 19px; color: #78716c; margin-top: 6px;">
+      Research suite filters 94% of raw noise before deep enrichment — via Claude/Cursor or CLI.
     </p>
   </div>
 
@@ -871,8 +872,8 @@ def generate_carousel():
 
   <!-- Footer -->
   <div class="slide-footer">
-    <div class="f-brand"><span>free-fleet</span> // 2 drops + 2 survivors</div>
-    <div class="f-page">02 / 04 →</div>
+    <div class="f-brand"><span>free-fleet</span> // research suite • 2 drops + 2 survivors</div>
+    <div class="f-page">02 / 05 →</div>
   </div>
 </div>
 
@@ -887,14 +888,14 @@ def generate_carousel():
   <div>
     <div class="pill-row">
       <div class="tag-pill purple">
-        <span class="dot"></span>Layers 3 &amp; 4 • High-Intent Signals
+        <span class="dot"></span>Account Research • Layers 3 &amp; 4
       </div>
     </div>
     <div class="hero-numbers" style="font-size: 60px;">
-      25 batches <span style="font-size: 38px; color: #64748B;">(2m)</span> <span class="accent-cyan">→</span> 12 batches <span style="font-size: 38px; color: #64748B;">(1m)</span>
+      25 batches <span style="font-size: 38px; color: #78716c;">(2m)</span> <span class="accent-cyan">→</span> 12 batches <span style="font-size: 38px; color: #78716c;">(1m)</span>
     </div>
-    <p style="font-size: 20px; color: #94A3B8; margin-top: 6px;">
-      Isolating open hiring budget and executive bottleneck language.
+    <p style="font-size: 19px; color: #78716c; margin-top: 6px;">
+      Research suite isolates hiring budget &amp; founder bottleneck language — verbatim.
     </p>
   </div>
 
@@ -991,8 +992,8 @@ def generate_carousel():
 
   <!-- Footer -->
   <div class="slide-footer">
-    <div class="f-brand"><span>free-fleet</span> // DROP 100 &rarr; DROP 25 &rarr; 25 Tier-1</div>
-    <div class="f-page">03 / 04 →</div>
+    <div class="f-brand"><span>free-fleet</span> // research suite • DROP 100 → DROP 25 → 25 Tier-1</div>
+    <div class="f-page">03 / 05 →</div>
   </div>
 </div>
 
@@ -1083,8 +1084,62 @@ def generate_carousel():
 
   <!-- Footer -->
   <div class="slide-footer">
-    <div class="f-brand"><span>free-fleet</span> // MIT Licensed • 100% Free Fleet</div>
-    <div class="f-page">04 / 04</div>
+    <div class="f-brand"><span>free-fleet</span> // MIT • Research Suite for account research</div>
+    <div class="f-page">04 / 05 →</div>
+  </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- SLIDE 5: EASY INSTALL + SAFETY                                          -->
+<!-- ======================================================================= -->
+<div class="slide">
+  <!-- Top -->
+  <div>
+    <div class="pill-row">
+      <div class="tag-pill green">
+        <span class="dot"></span>Easy Install • Claude / Cursor / Local
+      </div>
+    </div>
+    <div class="hero-numbers" style="font-size: 54px; margin-bottom: 8px;">
+      One command. <span style="color:#788c5d;">No keys.</span>
+    </div>
+    <p style="font-size: 19px; color: #57534e; margin-top: 6px;">
+      Anyone with Claude Desktop or Cursor can run the Research Suite — no CLI expertise needed.
+    </p>
+  </div>
+
+  <!-- Install cards -->
+  <div style="display:flex; flex-direction:column; gap:16px;">
+    <div class="terminal-box">
+      <div class="terminal-header">
+        <span class="t-dot t-red"></span><span class="t-dot t-yellow"></span><span class="t-dot t-green"></span>
+        <span class="t-title">bash — install to Claude/Cursor</span>
+      </div>
+      <div class="terminal-body" style="font-size:17px;">
+        <div><span class="prompt">$</span> <span class="cmd">pip install free-fleet</span></div>
+        <div style="margin-top:8px;"><span class="prompt">$</span> <span class="cmd">free-fleet mcp install --workspace-root "$PWD"</span></div>
+        <div class="terminal-note" style="color:#a8a29e;">Auto-writes <span style="color:#e8e6dc; font-family:ui-monospace;">claude_desktop_config.json</span> / <span style="color:#e8e6dc; font-family:ui-monospace;">mcp.json</span> → restart app</div>
+        <div style="margin-top:10px;"><span class="prompt">$</span> <span style="cmd">free-fleet mcp install --dry-run --json</span> <span style="color:#78716c;"># preview</span></div>
+        <div><span class="prompt">$</span> <span class="cmd">free-fleet quickstart --demo --run-id demo</span> <span style="color:#78716c;"># 0 keys, <1s proof</span></div>
+      </div>
+    </div>
+
+    <div class="flow-card" style="padding:20px 22px; gap:12px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div class="step-num green" style="width:32px; height:32px; font-size:14px;">✓</div>
+        <div style="font-size:18px; font-weight:800; color:#141413;">Or chat in Claude/Cursor — no terminal</div>
+      </div>
+      <div style="background:#faf9f5; border:1px solid #e8e6dc; border-radius:10px; padding:14px 18px; font-size:15px; color:#57534e; line-height:1.5;">
+        <span style="color:#78716c; font-weight:700;">In Claude:</span> “Use free-fleet to triage <span style="font-family:ui-monospace; background:#ffffff; border:1px solid #e8e6dc; padding:2px 6px; border-radius:6px;">accounts.csv</span> for hiring intent — free-only”<br/>
+        <span style="color:#a8a29e; font-size:13px;">→ Agent calls <span style="font-family:ui-monospace;">free_fleet_run</span> → SQLite leases → verifies quotes → <span style="font-family:ui-monospace;">free_fleet_export</span> → CSV</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="slide-footer">
+    <div class="f-brand"><span>free-fleet</span> // pip install free-fleet • Research Suite</div>
+    <div class="f-page">05 / 05</div>
   </div>
 </div>
 
