@@ -404,21 +404,17 @@ def generate_carousel():
 <body>
 
 <!-- ======================================================================= -->
-<!-- SLIDE 1: TITLE — SIMPLE BABY                                            -->
+<!-- SLIDE 1: TITLE — CENTERED HERO, NO CARD                                 -->
 <!-- ======================================================================= -->
-<div class="slide">
-  <div>
-    <div class="hero" style="font-size:76px; line-height:0.92;">
+<div class="slide" style="justify-content:center; align-items:center; text-align:center;">
+  <div style="display:flex; flex-direction:column; align-items:center; gap:18px; margin-top:auto; margin-bottom:auto;">
+    <div style="font-size:13px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:#a8a29e;">free-fleet • Automated Research Suite • MIT</div>
+    <div class="hero" style="font-size:78px; line-height:0.92; text-align:center;">
       Research<br/>and score<br/><span class="accent">anything,</span><br/>at scale,<br/>for free.
     </div>
-    <div class="sub" style="font-size:24px; margin-top:16px;">
-      Your target accounts. Your docs. Your criteria.<br/>All scored, sorted, and backed by proof.
+    <div class="sub" style="font-size:22px; margin-top:6px; text-align:center; color:#57534e;">
+      Your target accounts. Your docs. Your criteria.
     </div>
-  </div>
-  <div class="card">
-    <div style="display:flex; align-items:center; gap:12px; font-size:13px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#788c5d;"><span style="width:8px; height:8px; background:#788c5d; border-radius:50%; display:inline-block;"></span> Try with your own list in 30s</div>
-    <div style="font-size:16px; color:#57534e; line-height:1.5; margin-top:6px;"><span style="font-family:ui-monospace; background:#faf9f5; border:1px solid #e8e6dc; padding:2px 8px; border-radius:6px;">free-fleet quickstart --demo</span> → no keys, no data leaves your machine</div>
-    <div style="font-size:13px; color:#a8a29e; margin-top:8px;">Automated Research Suite • MIT • runs anywhere</div>
   </div>
   <div class="footer"><div class="brand"><span>free-fleet</span> // research and score anything</div><div class="page">01 / 05</div></div>
 </div>
