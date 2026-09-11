@@ -13,9 +13,11 @@ Start with `command -v free-fleet`. On a fresh system, run `free-fleet setup --w
 
 - To define or change extraction fields, read [references/task-contracts.md](references/task-contracts.md).
 - To test, run, resume, monitor status, evaluate routes, export, inspect routes, or configure MCP, read [references/operations.md](references/operations.md).
-- For tabular data, use CSV input (`--id-column`, `--text-column`) and export (`--format csv`).
+- For tabular data, use CSV input (`--id-column`, `--text-column`) and export (`--format csv|jsonl`). HTML, PDF, TXT, and MD are also accepted as single-item inputs.
 - For status queries, run `free-fleet status <run_id>` or use MCP `free_fleet_status`; do not resume or start runs for monitoring.
-- To benchmark routes against task samples before large runs, use `free-fleet eval` or MCP `free_fleet_eval`.
+- To benchmark routes against task samples before large runs, use `free-fleet eval TASK --input FILE --concurrency 4` or MCP `free_fleet_eval`.
+- For a zero-key proof in 30s, run `free-fleet quickstart --demo` (deterministic `demo/fake` provider, no API keys).
+- For schema bootstrapping from labels, use `free-fleet init NAME --from-example labels.csv [--label-column label]`.
 
 ## Invariants
 
@@ -33,13 +35,14 @@ Start with `command -v free-fleet`. On a fresh system, run `free-fleet setup --w
 ## Workflow
 
 1. Run `free-fleet doctor --json`, then inspect `free-fleet routes --json`. Refresh only when requested or needed; refresh contacts providers and appends route evidence.
-2. For local or private models (Ollama, vLLM, LM Studio), add the route with `free-fleet routes add <id> --provider <provider> --free`.
-3. Create or select a task, then run `free-fleet validate TASK --input FILE --json` before inference.
-4. Run one batch with `free-fleet test TASK --input FILE --json`.
-5. Optionally benchmark candidate routes with `free-fleet eval TASK --input FILE --json` to update intelligent ranking priors.
-6. Start the bounded campaign with an explicit run ID, session count, attempt ceiling, and optional policy (`--zdr`, `--provider`, `--exclude-provider`).
-7. Monitor progress in real time with `free-fleet status RUN_ID --watch`.
-8. On interruption, inspect the stored run and call `free-fleet resume RUN_ID`; do not reconstruct or restart its batches from input files.
-9. Export and validate the packet with `free-fleet export RUN_ID [--format csv|json]`. Report database path, run ID, packet path, verified/failed counts, attempts, and route/cost evidence.
+2. For a zero-key proof, run `free-fleet quickstart --demo --run-id demo --json` (writes `runs/demo/clean_packet.json` + `.csv` via `demo/fake`).
+3. For local or private models (Ollama, vLLM, LM Studio), add the route with `free-fleet routes add <id> --provider <provider> --free`.
+4. Create or select a task (`--preset classify|extract|triage|summarize` or `--from-example labels.csv`), then run `free-fleet validate TASK --input FILE --json` before inference. Long documents are lossless sliding-window sliced; `validate` warns how many windows were created.
+5. Run one batch with `free-fleet test TASK --input FILE --json`.
+6. Optionally benchmark candidate routes with `free-fleet eval TASK --input FILE --concurrency 4 --json` to update Bayesian ranking priors (now parallelized per-sample/per-route).
+7. Start the bounded campaign with an explicit run ID, session count, attempt ceiling, and optional policy (`--free-only` for verified zero-cost, `--zdr`, `--provider`, `--exclude-provider`, `--max-request-cost`).
+8. Monitor progress in real time with `free-fleet status RUN_ID --watch` or machine-readable `free-fleet status RUN_ID --json` (stream-friendly).
+9. On interruption, inspect the stored run and call `free-fleet resume RUN_ID`; do not reconstruct or restart its batches from input files.
+10. Export and validate the packet with `free-fleet export RUN_ID [--format json|csv|jsonl]`. Use `free-fleet db backup <path>` for safe SQLite copies. Report database path, run ID, packet path, verified/failed counts, attempts, and route/cost evidence.
 
 Never call a worker session an independent coding-agent session. `--sessions` is bounded batch concurrency inside one free-fleet campaign.

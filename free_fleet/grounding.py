@@ -119,14 +119,21 @@ def _fuzzy_find_in_slice(candidate_text: str, slice_text: str, min_ratio: float 
             extracted = slice_text[orig_start:orig_end]
             if _simple_normalize(extracted) == cand_norm:
                 return orig_start, orig_end
-            # Fallback: expand slightly
+            # Check ratio of extracted slice text vs candidate
+            curr_ratio = difflib.SequenceMatcher(None, _simple_normalize(extracted), cand_norm).ratio()
+            best_s, best_e = orig_start, orig_end
+            best_r = curr_ratio
             for delta in (1, 2, 3, 5, 8):
-                for s in (orig_start - delta, orig_start):
-                    for e in (orig_end + delta, orig_end):
-                        if s < 0 or e > len(slice_text):
+                for s in (max(0, orig_start - delta), orig_start):
+                    for e in (min(len(slice_text), orig_end + delta), orig_end):
+                        if s >= e:
                             continue
-                        if _simple_normalize(slice_text[s:e]) == cand_norm:
-                            return s, e
+                        r = difflib.SequenceMatcher(None, _simple_normalize(slice_text[s:e]), cand_norm).ratio()
+                        if r > best_r:
+                            best_r = r
+                            best_s, best_e = s, e
+            if best_r >= min_ratio:
+                return best_s, best_e
         except Exception:
             pass
     return None
