@@ -403,15 +403,15 @@ def generate_carousel():
     <div class="hero" style="font-size:84px; line-height:0.88; letter-spacing:-2.5px;">
       Research<br/>and score<br/><span class="accent">anything,</span><br/>at scale, for free.
     </div>
-    <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-      <span style="background:#ffffff; border:1px solid #e8e6dc; padding:8px 14px; border-radius:9999px; font-size:14px; font-weight:600; color:#57534e;">Your target accounts</span>
-      <span style="background:#ffffff; border:1px solid #e8e6dc; padding:8px 14px; border-radius:9999px; font-size:14px; font-weight:600; color:#57534e;">Your docs</span>
-      <span style="background:#ffffff; border:1px solid #e8e6dc; padding:8px 14px; border-radius:9999px; font-size:14px; font-weight:600; color:#57534e;">Your criteria</span>
+    <div style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap;">
+      <span style="background:#ffffff; border:1px solid #d6d3cd; padding:10px 16px; border-radius:9999px; font-size:15px; font-weight:600; color:#44403c;">Your target accounts</span>
+      <span style="background:#ffffff; border:1px solid #d6d3cd; padding:10px 16px; border-radius:9999px; font-size:15px; font-weight:600; color:#44403c;">Your docs</span>
+      <span style="background:#ffffff; border:1px solid #d6d3cd; padding:10px 16px; border-radius:9999px; font-size:15px; font-weight:600; color:#44403c;">Your criteria</span>
     </div>
   </div>
-  <div style="background:#ffffff; border:1px solid #e8e6dc; border-radius:14px; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; box-shadow: 0 2px 10px rgba(20,20,19,0.04);">
-    <div style="font-family:ui-monospace; font-size:13px; color:#57534e;"><span style="color:#a8a29e;">$</span> free-fleet quickstart --demo <span style="color:#a8a29e;">→ no keys, runs locally</span></div>
-    <div style="font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#788c5d;">Try in 30s →</div>
+  <div style="background:#1a1a18; border:1px solid #2a2a28; border-radius:12px; padding:18px 20px; display:flex; justify-content:space-between; align-items:center;">
+    <div style="font-family:ui-monospace; font-size:15px; color:#e8e6dc;"><span style="color:#a8a29e;">$</span> free-fleet quickstart --demo <span style="color:#a8a29e;">→ no keys, runs locally</span></div>
+    <div style="font-size:13px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#a7c5a8;">Try in 30s →</div>
   </div>
   <div class="footer" style="margin-top:0;"><div class="brand"><span>free-fleet</span> // research and score anything</div><div class="page">01 / 05</div></div>
 </div>
