@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-> **Verified CSV in → Verified CSV out. Every claim cites a verbatim source quote at `[start, end]` character offsets — or the row fails validation and the batch rotates to the next route. No hallucinations pass the gate.**
+> **CSV in → source-grounded CSV out. Every record cites a verbatim quote at `[start, end]` character offsets. Quotes are checked automatically; claims and interpretations still need review.**
 
 Coordinated fleet for high-throughput, evidence-grounded batch extraction across free, paid, and local LLMs — with SQLite checkpointing, Bayesian route scoring, and deterministic quote verification.
 
@@ -72,14 +72,18 @@ Every output row is gated through deterministic checks *before* it is committed 
 git clone https://github.com/NatesVibeCode/free-fleet.git
 python3 -m pip install ./free-fleet
 
-# Deterministic offline demo: creates a temp workspace, registers a fake
+# Deterministic offline demo: writes in the current workspace, registers a fake
 # zero-cost route, runs the bundled examples, and writes a verified packet + CSV.
-free-fleet quickstart --demo
+free-fleet quickstart --demo --run-id demo-01
 
 # Outputs:
 #   runs/demo-01/clean_packet.json   (self-validating packet)
 #   runs/demo-01/clean_packet.csv    (flat CSV)
 ```
+
+Use Python 3.10+ in a virtual environment. The demo makes no model API calls and is excluded from real campaigns unless explicitly selected. It checks the pipeline, not model quality.
+
+Named providers use their own environment variables (for example `OLLAMA_BASE_URL` or `GROQ_API_KEY`). `OPENAI_COMPATIBLE_BASE_URL` and `OPENAI_COMPATIBLE_API_KEY` configure only `--provider openai_compatible`. `.env` files are not loaded automatically. Install the account-fleet fork in a separate virtual environment because both distributions share a Python package and CLI aliases.
 
 ### Real Workspace
 

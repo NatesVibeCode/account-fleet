@@ -64,7 +64,7 @@ class OpenCodeProvider(BaseProvider):
         
         # Strip provider namespace prefix if present (e.g. opencode/anthropic/claude-3-5-sonnet -> anthropic/claude-3-5-sonnet)
         actual_model = route_id
-        if actual_model.startswith("opencode/"):
+        if actual_model.startswith("opencode/") and "/" in actual_model[len("opencode/"):]:
             actual_model = actual_model[len("opencode/"):]
         elif actual_model.startswith("opencode:"):
             actual_model = actual_model[len("opencode:"):]

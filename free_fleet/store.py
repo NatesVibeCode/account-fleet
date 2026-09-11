@@ -512,7 +512,7 @@ class FreeFleetStore:
             if row is None or row["status"] != "leased" or row["lease_owner"] != worker_id:
                 return
             connection.execute(
-                """UPDATE batches SET status='pending',lease_owner=NULL,leased_at=NULL,error=?
+                """UPDATE batches SET status='pending',lease_owner=NULL,leased_at=NULL,error=?,max_attempts=max_attempts+1
                    WHERE run_id=? AND batch_id=?""",
                 (reason or None, run_id, batch_id),
             )
@@ -522,12 +522,13 @@ class FreeFleetStore:
                 (reason or "Lease released", now_iso(), attempt_id),
             )
 
-    def reset_leased_batches(self, run_id: str) -> int:
-        """Reset all batches stuck in 'leased' status back to 'pending' for resume."""
+    def reset_leased_batches(self, run_id: str, lease_timeout_seconds: int = 300) -> int:
+        """Recover expired leases without taking work away from active workers."""
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
-                "SELECT batch_id, attempts FROM batches WHERE run_id=? AND status='leased'", (run_id,)
+                """SELECT batch_id, attempts FROM batches WHERE run_id=? AND status='leased'
+                   AND leased_at < datetime('now', ?)""", (run_id, f"-{lease_timeout_seconds} seconds")
             ).fetchall()
             count = len(rows)
             for row in rows:

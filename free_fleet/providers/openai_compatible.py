@@ -6,6 +6,7 @@ import os
 import threading
 import time
 import uuid
+from urllib.parse import urlsplit
 from typing import Any, Optional, Tuple
 import httpx
 from .base import BaseProvider
@@ -25,17 +26,6 @@ def _shared_httpx_client(timeout: int = 120) -> httpx.Client:
                 pass
             _shared_client = None
         if _shared_client is None or _shared_client.is_closed:
-            _shared_client = httpx.Client(
-                timeout=timeout,
-                limits=httpx.Limits(max_keepalive_connections=50, max_connections=100),
-                http2=False,
-                follow_redirects=True,
-            )
-        if _shared_client.timeout.read != timeout:  # type: ignore
-            try:
-                _shared_client.close()
-            except Exception:
-                pass
             _shared_client = httpx.Client(
                 timeout=timeout,
                 limits=httpx.Limits(max_keepalive_connections=50, max_connections=100),
@@ -82,7 +72,6 @@ class OpenAICompatibleProvider(BaseProvider):
         configured_url = (
             base_url
             or os.environ.get(f"{env_prefix}_BASE_URL")
-            or os.environ.get("OPENAI_COMPATIBLE_BASE_URL")
         )
         if not configured_url:
             if provider_name == "groq":
@@ -100,16 +89,13 @@ class OpenAICompatibleProvider(BaseProvider):
 
         self.base_url = configured_url.rstrip("/")
         self.api_key = (
-            api_key
-            or os.environ.get(f"{env_prefix}_API_KEY")
-            or os.environ.get("OPENAI_COMPATIBLE_API_KEY")
-            or os.environ.get("OPENAI_API_KEY", "")
+            api_key if api_key is not None else os.environ.get(f"{env_prefix}_API_KEY", "")
         )
         self.provider_name = provider_name
         self.is_local = (
             is_free
             if is_free is not None
-            else any(h in self.base_url for h in ("localhost", "127.0.0.1", "0.0.0.0", "::1"))
+            else urlsplit(self.base_url).hostname in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
         )
 
     def run_prompt(
@@ -182,7 +168,7 @@ class OpenAICompatibleProvider(BaseProvider):
                 with httpx.Client(timeout=timeout_sec, follow_redirects=True) as _cl:
                     return _cl.post(f"{self.base_url}/chat/completions", headers=headers, json=_payload)
             _cl = _shared_httpx_client(timeout=timeout_sec)
-            return _cl.post(f"{self.base_url}/chat/completions", headers=headers, json=_payload)
+            return _cl.post(f"{self.base_url}/chat/completions", headers=headers, json=_payload, timeout=timeout_sec)
 
         try:
             resp = _do_post(payload)
@@ -233,7 +219,9 @@ class OpenAICompatibleProvider(BaseProvider):
             usage = data.get("usage", {})
             receipt["usage"] = usage
 
-            reported_cost = data.get("cost") or (usage.get("cost") if isinstance(usage, dict) else None)
+            reported_cost = data.get("cost")
+            if reported_cost is None and isinstance(usage, dict):
+                reported_cost = usage.get("cost")
             if isinstance(reported_cost, (int, float)):
                 receipt["cost"] = float(reported_cost)
                 receipt["cost_status"] = "reported_zero" if reported_cost == 0 else "billed"

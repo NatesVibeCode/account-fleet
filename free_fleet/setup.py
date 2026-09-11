@@ -75,10 +75,13 @@ def _install_skill(source: Path, destination: Path, *, dry_run: bool, force: boo
 
 
 def installed_cli_path() -> str:
+    for directory in (Path(sys.executable).absolute().parent, Path(sys.prefix) / "Scripts"):
+        for name in ("free-fleet", "bulk-lanes"):
+            for suffix in (".exe", "") if sys.platform == "win32" else ("",):
+                sibling = directory / (name + suffix)
+                if sibling.is_file():
+                    return str(sibling)
     for name in ("free-fleet", "bulk-lanes"):
-        sibling = Path(sys.executable).absolute().parent / name
-        if sibling.is_file():
-            return str(sibling)
         discovered = shutil.which(name)
         if discovered:
             return str(Path(discovered).resolve())
@@ -133,7 +136,8 @@ def setup_workspace(
             actions.append(SetupAction(kind="routes", status="skipped", detail="run routes --refresh when ready"))
         observed_route_count = len(catalog.get_routes(free_only=True))
 
-    provider_ready = bool(shutil.which("opencode") or os.environ.get("OPENROUTER_API_KEY"))
+    from .providers.registry import configured_routes
+    provider_ready = not dry_run and bool(configured_routes(catalog.get_routes(free_only=True)))
     skill_ready = dry_run or actions[0].status in {"created", "updated", "unchanged"}
     ready = not dry_run and skill_ready and provider_ready and observed_route_count > 0
     cli_command = installed_cli_path()

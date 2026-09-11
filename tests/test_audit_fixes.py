@@ -162,11 +162,14 @@ def test_resume_reclaims_abandoned_leased_batches(tmp_path: Path):
 
     lease1 = store.lease_batch("run_abandoned", worker_id="dead_worker")
     assert lease1 is not None
+    with store.connect() as connection:
+        connection.execute("UPDATE batches SET leased_at=datetime('now', '-10 minutes') WHERE run_id='run_abandoned' AND status='leased'")
 
     snapshot_before = store.run_snapshot("run_abandoned")
     assert snapshot_before["batches"][lease1["batch"]["batch_id"]]["status"] == "leased"
 
-    engine = Engine(task=spec, store=store, catalog=catalog)
+    from free_fleet.models import RoutePolicy
+    engine = Engine(task=spec, store=store, catalog=catalog, policy=RoutePolicy(allowed_routes=["demo/fake"]))
     packet = engine.resume_campaign("run_abandoned", concurrency=1, output_packet_path=tmp_path / "packet.json")
 
     assert packet["total_verified_records"] == 2

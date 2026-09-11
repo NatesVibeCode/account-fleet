@@ -36,17 +36,6 @@ def _shared_httpx_client(timeout: int = 120) -> httpx.Client:
                 http2=False,
                 follow_redirects=True,
             )
-        if _shared_client.timeout.read != timeout:  # type: ignore
-            try:
-                _shared_client.close()
-            except Exception:
-                pass
-            _shared_client = httpx.Client(
-                timeout=timeout,
-                limits=httpx.Limits(max_keepalive_connections=50, max_connections=100),
-                http2=False,
-                follow_redirects=True,
-            )
         return _shared_client
 
 def _should_use_ephemeral_client() -> bool:
@@ -85,7 +74,7 @@ class OpenRouterProvider(BaseProvider):
         rid = uuid.uuid4().hex
         
         # Route id can be "openrouter/foo/bar:free" or "foo/bar:free"
-        model_name = route_id.removeprefix("openrouter/")
+        model_name = route_id.removeprefix("openrouter/").removeprefix("openrouter:")
         
         receipt = {
             "id": rid,
@@ -160,7 +149,7 @@ class OpenRouterProvider(BaseProvider):
                 with httpx.Client(timeout=timeout_sec, follow_redirects=True) as _cl:
                     return _cl.post(f"{self.base_url}/chat/completions", headers=headers, json=_payload)
             _cl = _shared_httpx_client(timeout=timeout_sec)
-            return _cl.post(f"{self.base_url}/chat/completions", headers=headers, json=_payload)
+            return _cl.post(f"{self.base_url}/chat/completions", headers=headers, json=_payload, timeout=timeout_sec)
 
         try:
             resp = _do_post(payload)

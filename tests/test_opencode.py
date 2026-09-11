@@ -20,6 +20,16 @@ def test_missing_cost_is_unknown_not_zero():
     assert receipt["cost_status"] == "unknown"
 
 
+def test_discovered_opencode_model_keeps_native_provider_prefix():
+    class CheckingRunner(RunnerStub):
+        def run(self, task_config, args, timeout_sec):
+            assert task_config["model"] == "opencode/name-free"
+            assert args[args.index("--model") + 1] == "opencode/name-free"
+            return super().run(task_config, args, timeout_sec)
+
+    assert OpenCodeProvider(runner=CheckingRunner()).run_prompt("opencode/name-free", "prompt")[0]
+
+
 def test_local_runner_invokes_normal_opencode_cli(monkeypatch):
     captured = {}
 

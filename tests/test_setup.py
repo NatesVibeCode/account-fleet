@@ -27,7 +27,7 @@ def test_setup_installs_bundled_skill_and_database_idempotently(tmp_path):
     assert second.actions[0].status == "unchanged"
     assert Path(first.skill_path, "SKILL.md").is_file()
     assert BulkLanesStore(first.database).schema_version() == "2"
-    assert first.stdio_server.command.endswith("free-fleet")
+    assert Path(first.stdio_server.command).stem in {"free-fleet", "bulk-lanes"}
     assert first.database in first.stdio_server.args
     assert first.ready is False  # packaged route hints are not fresh price evidence
 

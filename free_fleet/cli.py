@@ -107,7 +107,7 @@ def _package_version() -> str:
             return importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
             pass
-    return "0.2.2"
+    return "0.2.4"
 
 
 def _emit(value: Any, json_mode: bool, human: str | None = None) -> None:
@@ -119,7 +119,11 @@ def _emit(value: Any, json_mode: bool, human: str | None = None) -> None:
 
 
 def _store(args: argparse.Namespace) -> BulkLanesStore:
-    return BulkLanesStore(Path(args.db) if getattr(args, "db", None) else default_db_path())
+    workspace = Path(getattr(args, "workspace_root", ".")).expanduser().resolve()
+    explicit = getattr(args, "db", None)
+    configured = os.environ.get("FREE_FLEET_DB", os.environ.get("BULK_LANES_DB"))
+    path = Path(explicit or configured or "free-fleet.db").expanduser()
+    return BulkLanesStore(path if path.is_absolute() else workspace / path)
 
 
 def _resolve_task(reference: str, store: BulkLanesStore) -> TaskSpec:
@@ -524,7 +528,10 @@ def cmd_doctor(args: argparse.Namespace) -> None:
         ok=skill_ok,
         detail=str(destination) if skill_ok else f"missing or outdated at {destination}",
     ))
-    ready = checks[0].ok and checks[3].ok and (checks[1].ok or checks[2].ok)
+    from .providers.registry import configured_routes
+    usable = configured_routes(observed_routes)
+    checks.append(DoctorCheck(name="configured_routes", ok=bool(usable), detail=f"{len(usable)} routes have their own transport configured; live authentication is not tested"))
+    ready = checks[0].ok and bool(usable)
     report = DoctorReport(ready=ready, database=str(store.path.resolve()), checks=checks)
     human = "\n".join(f"{'OK' if check.ok else '--'}  {check.name}: {check.detail}" for check in checks)
     _emit(report, args.json, f"{'Ready' if ready else 'Not ready'}\n{human}")
@@ -587,7 +594,7 @@ def cmd_quickstart(args: argparse.Namespace) -> None:
             InputItem(item_id="demo_2", text="Fast shipping and recyclable packaging was appreciated."),
         ]
         # Use Engine with demo registry (registered automatically)
-        packet = Engine(task=spec, store=store).run_campaign(
+        packet = Engine(task=spec, store=store, policy=RoutePolicy(allowed_routes=["demo/fake"], free_only=True)).run_campaign(
             raw_items=items,
             run_id=run_id,
             input_path=str(input_path) if input_path else "demo-synthetic",
@@ -598,7 +605,7 @@ def cmd_quickstart(args: argparse.Namespace) -> None:
     else:
         spec = load_task_spec(task_path)
         items = load_input_items(str(input_path))
-        packet = Engine(task=spec, store=store).run_campaign(
+        packet = Engine(task=spec, store=store, policy=RoutePolicy(allowed_routes=["demo/fake"], free_only=True)).run_campaign(
             raw_items=items,
             run_id=run_id,
             input_path=str(input_path.resolve()),
@@ -647,13 +654,13 @@ def cmd_serve(args: argparse.Namespace) -> None:
 def _claude_config_candidates() -> list[Path]:
     home = Path.home()
     candidates: list[Path] = []
-    # macOS primary
-    candidates.append(home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json")
-    # Linux / generic XDG
-    candidates.append(home / ".config" / "Claude" / "claude_desktop_config.json")
-    candidates.append(home / ".config" / "claude" / "claude_desktop_config.json")
-    if os.name == "nt" and os.environ.get("APPDATA"):
-        candidates.append(Path(os.environ["APPDATA"]) / "Claude" / "claude_desktop_config.json")
+    if sys.platform == "win32":
+        candidates.append(Path(os.environ.get("APPDATA", str(home / "AppData" / "Roaming"))) / "Claude" / "claude_desktop_config.json")
+    elif sys.platform == "darwin":
+        candidates.append(home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json")
+    else:
+        config_root = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config")))
+        candidates.extend(config_root / name / "claude_desktop_config.json" for name in ("Claude", "claude"))
     return candidates
 
 
@@ -681,8 +688,6 @@ def cmd_mcp_install(args: argparse.Namespace) -> None:
         raise ValueError(f"workspace root not found: {workspace_root}")
     db_path = Path(getattr(args, "db", None)).expanduser() if getattr(args, "db", None) else workspace_root / "free-fleet.db"
     db_path = (db_path if db_path.is_absolute() else workspace_root / db_path).resolve()
-    # Ensure workspace contains DB (setup will create if needed)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
 
     cli_cmd = installed_cli_path()
     server_entry = {
@@ -717,14 +722,16 @@ def cmd_mcp_install(args: argparse.Namespace) -> None:
         existing: dict[str, Any] = {}
         if config_path.is_file():
             try:
-                existing = json.loads(config_path.read_text())
+                existing = json.loads(config_path.read_text(encoding="utf-8"))
                 if not isinstance(existing, dict):
-                    existing = {}
-            except Exception:
-                existing = {}
+                    raise ValueError("config must contain a JSON object")
+            except (ValueError, OSError) as exc:
+                raise ValueError(f"Cannot read existing config {config_path}: {exc}; file was not changed") from exc
 
         servers = existing.get("mcpServers")
-        if not isinstance(servers, dict):
+        if "mcpServers" in existing and not isinstance(servers, dict):
+            raise ValueError(f"Invalid mcpServers in config {config_path}; file was not changed")
+        if servers is None:
             servers = {}
             existing["mcpServers"] = servers
 
@@ -742,7 +749,7 @@ def cmd_mcp_install(args: argparse.Namespace) -> None:
             config_path.parent.mkdir(parents=True, exist_ok=True)
             servers["free-fleet"] = server_entry
             # Preserve other keys (e.g., globalShortcut)
-            config_path.write_text(json.dumps(existing, indent=2) + "\n")
+            config_path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
 
         results.append({
             "client": client,
