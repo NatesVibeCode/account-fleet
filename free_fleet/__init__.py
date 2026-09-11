@@ -1,4 +1,5 @@
 """Typed bulk evidence processing with exact source-offset verification."""
+__version__ = "0.2.1"
 import json
 from pathlib import Path
 from .task import load_task_spec
@@ -111,4 +112,5 @@ __all__ = [
     "export_clean_packet",
     "read_packet",
     "process",
+    "__version__",
 ]

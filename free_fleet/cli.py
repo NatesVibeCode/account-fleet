@@ -136,7 +136,7 @@ def _package_version() -> str:
             return importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
             pass
-    return "0.2.0"
+    return "0.2.1"
 
 
 def _emit(value: Any, json_mode: bool, human: str | None = None) -> None:
