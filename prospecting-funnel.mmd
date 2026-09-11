@@ -1,89 +1,111 @@
 flowchart TD
-    %% Global Styling
-    classDef inputNode fill:#1E293B,stroke:#64748B,stroke-width:2px,color:#F8FAFC;
-    classDef laneNode fill:#0F172A,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC;
-    classDef gateNode fill:#312E81,stroke:#818CF8,stroke-width:2px,color:#EEF2FF;
-    classDef evidenceNode fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#ECFDF5;
-    classDef dropNode fill:#450A0A,stroke:#F87171,stroke-width:1px,color:#FEF2F2;
-    classDef winnerNode fill:#14532D,stroke:#4ADE80,stroke-width:3px,color:#F0FDF4;
+    %% =========================================================================
+    %% free-fleet: Compounding B2B Prospecting & Deep Enrichment Funnel
+    %% =========================================================================
 
-    %% 1. Raw Universe
-    subgraph L0 ["Raw Universe (Top of Funnel)"]
-        UNIVERSE["50,000 Raw Domain URLs / Company Records\n(Public lists, directory dumps, crunchbase, CSV)"]:::inputNode
+    %% Theme Styling (Optimized for Dark-Mode Infographics / LinkedIn)
+    classDef universe fill:#0F172A,stroke:#475569,stroke-width:2px,color:#F8FAFC,font-weight:bold;
+    classDef lane fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC;
+    classDef gate fill:#312E81,stroke:#818CF8,stroke-width:2px,color:#EEF2FF,font-weight:bold;
+    classDef evidence fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#ECFDF5;
+    classDef drop fill:#450A0A,stroke:#EF4444,stroke-width:1px,color:#FCA5A5,stroke-dasharray: 5 5;
+    classDef survivor fill:#1E1B4B,stroke:#A855F7,stroke-width:2px,color:#FAF5FF,font-weight:bold;
+    classDef winner fill:#052E16,stroke:#22C55E,stroke-width:3px,color:#F0FDF4,font-weight:bold;
+
+    %% -------------------------------------------------------------------------
+    %% STAGE 0: Account List Generation
+    %% -------------------------------------------------------------------------
+    subgraph S0 ["1. Account List Generation (Broad TAM)"]
+        UNIVERSE["Raw Account Universe: 50,000 Target Domains\n(CSV import, directory dump, public company lists)"]:::universe
+        DEF_LANES["Define Target Attributes in free-fleet Lanes\n(Industry, B2B/B2C, Business Model, Pricing Tier, Scale)"]:::lane
+        UNIVERSE --> DEF_LANES
     end
 
-    %% 2. Layer 1: Firmographic & Offering Fit
-    subgraph L1 ["Layer 1: Firmographic & Business Model Triage"]
-        L1_SCRAPE["Scrape: Homepage, Pricing Page, About Page"]:::laneNode
-        L1_FLEET["free-fleet Lane 1: classify & triage\n(Free/Local Models: Qwen-2.5-72B, Llama-3.3-70B)"]:::laneNode
-        L1_EVIDENCE["Character-Exact Evidence Gate\n• Verbatim value proposition quote\n• Strict JSON schema: B2B/B2C, pricing model, ICP fit"]:::evidenceNode
-        L1_GATE{"Dynamic Score >= 70%\n(Firmographic & ICP Fit)"}:::gateNode
-        L1_DROP["Drop 40,000 Unqualified Accounts\n(B2C, wrong tier, no pricing fit)"]:::dropNode
+    %% -------------------------------------------------------------------------
+    %% LAYER 1: Firmographic Scraping & Dynamic Fit Scoring
+    %% -------------------------------------------------------------------------
+    subgraph S1 ["2. Layer 1: Firmographic Scraping & Dynamic Scoring"]
+        SCRAPE_1["Scrape: Homepage, Pricing, Meta Tags, About Us"]:::lane
+        FLEET_1["free-fleet Lane 1: classify & triage\n(Free/Local Fleet: Qwen 2.5 72B / Llama 3.3 70B)"]:::lane
+        SCORE_1["Compute Dynamic Score #1: ICP Fit Score (0-100)\n+ Verbatim Grounded Quote from Homepage"]:::evidence
+        GATE_1{"Threshold Gate #1\nFit Score >= 70?"}:::gate
+        DROP_1["Drop 40,000 Unqualified Accounts\n(B2C, wrong tier, no ICP match)"]:::drop
+        SURVIVORS_1["10,000 Qualified ICP Survivors"]:::survivor
 
-        UNIVERSE --> L1_SCRAPE
-        L1_SCRAPE --> L1_FLEET
-        L1_FLEET --> L1_EVIDENCE
-        L1_EVIDENCE --> L1_GATE
-        L1_GATE -->|"Pass (Top 20%)"| SURVIVORS_1["10,000 Qualified ICP Accounts"]:::inputNode
-        L1_GATE -.->|"Reject (80%)"| L1_DROP
+        DEF_LANES --> SCRAPE_1
+        SCRAPE_1 --> FLEET_1
+        FLEET_1 --> SCORE_1
+        SCORE_1 --> GATE_1
+        GATE_1 -->|"PASS (Top 20%)"| SURVIVORS_1
+        GATE_1 -.->|"FAIL (80%)"| DROP_1
     end
 
-    %% 3. Layer 2: Tech Stack & Architecture Pain
-    subgraph L2 ["Layer 2: Tech Stack & Vulnerability Deep-Dive"]
-        L2_SCRAPE["Scrape: Developer Docs, API Specs, Changelog, Status Pages"]:::laneNode
-        L2_FLEET["free-fleet Lane 2: extract\n(Deterministic Quote Grounding)"]:::laneNode
-        L2_EVIDENCE["Character-Exact Evidence Gate\n• Verbatim quote citing competitor tool / legacy SDK\n• Exact offsets from integration documentation"]:::evidenceNode
-        L2_GATE{"Dynamic Score >= 75%\n(Tech Stack Migration Urgency)"}:::gateNode
-        L2_DROP["Drop 7,500 Stable Accounts\n(No competitor tooling, locked into proprietary stack)"]:::dropNode
+    %% -------------------------------------------------------------------------
+    %% LAYER 2: Tech Stack & Architecture Deep-Dive (Enrich & Score Again)
+    %% -------------------------------------------------------------------------
+    subgraph S2 ["3. Layer 2: Tech Stack & Architecture Pain (Enrich & Rescore)"]
+        SCRAPE_2["Scrape: Developer Docs, API Specs, Changelogs, Integrations"]:::lane
+        FLEET_2["free-fleet Lane 2: extract\n(Deterministic Quote Grounding)"]:::lane
+        SCORE_2["Compute Dynamic Score #2: Migration Pain / Tech Vulnerability\n+ Exact Verbatim Quote of Competitor Tech in Docs"]:::evidence
+        GATE_2{"Threshold Gate #2\nTech Pain Score >= 75?"}:::gate
+        DROP_2["Drop 7,500 Stable Accounts\n(No competitor tooling, locked legacy stack)"]:::drop
+        SURVIVORS_2["2,500 Tech-Vulnerable Survivors"]:::survivor
 
-        SURVIVORS_1 --> L2_SCRAPE
-        L2_SCRAPE --> L2_FLEET
-        L2_FLEET --> L2_EVIDENCE
-        L2_EVIDENCE --> L2_GATE
-        L2_GATE -->|"Pass (Top 25%)"| SURVIVORS_2["2,500 Tech-Vulnerable Accounts"]:::inputNode
-        L2_GATE -.->|"Reject (75%)"| L2_DROP
+        SURVIVORS_1 -->|"Enrich Survivors"| SCRAPE_2
+        SCRAPE_2 --> FLEET_2
+        FLEET_2 --> SCORE_2
+        SCORE_2 --> GATE_2
+        GATE_2 -->|"PASS (Top 25%)"| SURVIVORS_2
+        GATE_2 -.->|"FAIL (75%)"| DROP_2
     end
 
-    %% 4. Layer 3: Hiring Velocity & Active Intent
-    subgraph L3 ["Layer 3: Hiring Signals & Budget Allocation"]
-        L3_SCRAPE["Scrape: Active Job Boards, Role Descriptions, Greenhouse / Lever"]:::laneNode
-        L3_FLEET["free-fleet Lane 3: extract & summarize\n(High-Throughput SQLite Queue)"]:::laneNode
-        L3_EVIDENCE["Character-Exact Evidence Gate\n• Verbatim quote from open job spec citing active project\n• Proof of budget & leadership urgency"]:::evidenceNode
-        L3_GATE{"Dynamic Score >= 80%\n(Active Project Budget & Urgency)"}:::gateNode
-        L3_DROP["Drop 2,000 Passive Accounts\n(Hiring freeze, no relevant technical openings)"]:::dropNode
+    %% -------------------------------------------------------------------------
+    %% LAYER 3: Job Openings & Hiring Intent Signals
+    %% -------------------------------------------------------------------------
+    subgraph S3 ["4. Layer 3: Job Openings & Hiring Intent Signals (Enrich & Rescore)"]
+        SCRAPE_3["Scrape: Active Job Boards (Greenhouse, Lever, Careers Pages)"]:::lane
+        FLEET_3["free-fleet Lane 3: extract\n(Keyword Search: 'Migration', 'Lead Architect', Tool Names)"]:::lane
+        SCORE_3["Compute Dynamic Score #3: Active Budget & Urgency Score\n+ Exact Verbatim Quote from Open Job Spec"]:::evidence
+        GATE_3{"Threshold Gate #3\nActive Hiring Intent >= 80?"}:::gate
+        DROP_3["Drop 2,000 Inactive Accounts\n(Hiring freeze, no relevant technical reqs)"]:::drop
+        SURVIVORS_3["500 High-Intent Survivors"]:::survivor
 
-        SURVIVORS_2 --> L3_SCRAPE
-        L3_SCRAPE --> L3_FLEET
-        L3_FLEET --> L3_EVIDENCE
-        L3_EVIDENCE --> L3_GATE
-        L3_GATE -->|"Pass (Top 20%)"| SURVIVORS_3["500 High-Intent Target Accounts"]:::inputNode
-        L3_GATE -.->|"Reject (80%)"| L3_DROP
+        SURVIVORS_2 -->|"Enrich Survivors"| SCRAPE_3
+        SCRAPE_3 --> FLEET_3
+        FLEET_3 --> SCORE_3
+        SCORE_3 --> GATE_3
+        GATE_3 -->|"PASS (Top 20%)"| SURVIVORS_3
+        GATE_3 -.->|"FAIL (80%)"| DROP_3
     end
 
-    %% 5. Layer 4: Executive Voice & Strategic Narrative
-    subgraph L4 ["Layer 4: Founder Voice & Executive Signals"]
-        L4_SCRAPE["Scrape: Founder / Exec Social Posts, Podcast Transcripts, Interviews"]:::laneNode
-        L4_FLEET["free-fleet Lane 4: summarize & triage\n(Bayesian-Ranked Quality Models)"]:::laneNode
-        L4_EVIDENCE["Character-Exact Evidence Gate\n• Verbatim quote from CEO / VP Engineering on current pain\n• Exact strategic goals for current quarter"]:::evidenceNode
-        L4_GATE{"Compound Score >= 90%\n(Sniper Account Priority)"}:::gateNode
-        L4_DROP["Deprioritize 350 Accounts\n(No recent executive narrative triggers)"]:::dropNode
+    %% -------------------------------------------------------------------------
+    %% LAYER 4: Social Posts, Founder Language & Market Nuance
+    %% -------------------------------------------------------------------------
+    subgraph S4 ["5. Layer 4: Social Posts & Founder Language (Final Sniper Tier)"]
+        SCRAPE_4["Scrape: Founder/Exec LinkedIn Posts, Podcasts, Keynotes, Interviews"]:::lane
+        FLEET_4["free-fleet Lane 4: summarize & triage\n(Extract Strategic Priorities & Executive Vocabulary)"]:::lane
+        SCORE_4["Compute Final Compound Score: Executive Alignment (90-100)\n+ Verbatim Quote of Founder Describing Current Bottleneck"]:::evidence
+        GATE_4{"Final Gate #4\nCompound Score >= 90?"}:::gate
+        DROP_4["Deprioritize 350 Accounts\n(No recent executive narrative trigger)"]:::drop
+        SNIPER["150 Tier-1 'Sniper' Accounts\n(Deeply Enriched, Scored & Grounded)"]:::winner
 
-        SURVIVORS_3 --> L4_SCRAPE
-        L4_SCRAPE --> L4_FLEET
-        L4_FLEET --> L4_EVIDENCE
-        L4_EVIDENCE --> L4_GATE
-        L4_GATE -->|"Pass (Top 30%)"| WINNERS["150 Tier-1 Sniper Accounts"]:::winnerNode
-        L4_GATE -.->|"Nurture (70%)"| L4_DROP
+        SURVIVORS_3 -->|"Enrich Survivors"| SCRAPE_4
+        SCRAPE_4 --> FLEET_4
+        FLEET_4 --> SCORE_4
+        SCORE_4 --> GATE_4
+        GATE_4 -->|"PASS (Top 30%)"| SNIPER
+        GATE_4 -.->|"Nurture Pool (70%)"| DROP_4
     end
 
-    %% 6. Zero-Hallucination Outbound Execution
-    subgraph OUT ["Conversion: Zero-Hallucination Outbound Engine"]
-        OUT_SYNTH["free-fleet export --format csv | jsonl\nSynthesize all 4 layers of verified claims + exact quotes"]:::winnerNode
-        OUT_HOOK["Hyper-Personalized Cold Outbound\n• Email Hook 1: Quotes CEO's exact interview remark\n• Email Hook 2: Quotes open job spec requirement\n• Email Hook 3: Quotes integration doc vulnerability\n• Zero Hallucinations — 100% Verbatim Evidence"]:::winnerNode
-        
-        METRICS["Total API Spend: $0.00\n(Zero-Cost Cloud API Routes + Local Ollama / vLLM)\nZero Clay Credit Burn | Zero Hallucinated Hooks"]:::evidenceNode
+    %% -------------------------------------------------------------------------
+    %% OUTCOME: Hyper-Personalized & Verifiable Outbound
+    %% -------------------------------------------------------------------------
+    subgraph S5 ["6. Compounded Output: Zero-Hallucination Outbound"]
+        EXPORT["free-fleet export --format csv | jsonl\n(Full Audit Trail + Exact Character-Offset Proofs)"]:::winner
+        PAYLOAD["Hyper-Personalized Outbound Hook Payload:\n• Hook 1: Exact founder quote on strategic pain point\n• Hook 2: Exact quote from open job spec proving budget\n• Hook 3: Exact quote from docs showing competitor tech in use\n• 100% Verifiable Evidence — Zero Hallucinations"]:::winner
+        ZERO_COST["Total API Cost: $0.00\n(Free Cloud APIs + Local Ollama/vLLM Workers via SQLite Queue)\nZero Clay Credit Burn | Zero Subscription Bloat"]:::evidence
 
-        WINNERS --> OUT_SYNTH
-        OUT_SYNTH --> OUT_HOOK
-        OUT_HOOK --> METRICS
+        SNIPER --> EXPORT
+        EXPORT --> PAYLOAD
+        PAYLOAD --> ZERO_COST
     end
