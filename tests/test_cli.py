@@ -47,7 +47,6 @@ def test_json_flag_works_before_command():
 
 def test_presets_cover_each_named_bulk_job():
     assert set(cli.PRESETS) == {
-        "account-research",
         "classify",
         "extract",
         "filter",
@@ -305,22 +304,5 @@ def test_init_presets_score_and_account_research(tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["created"] is True
     assert "passed" in out["claims_schema"]["properties"]
-
-    # Test account-research preset
-    cli.cmd_init(Namespace(
-        name="accounts-demo",
-        preset="account-research",
-        from_example=None,
-        label_column=None,
-        batch_size=5,
-        sample=str(tmp_path / "accts_sample.jsonl"),
-        db=str(db),
-        json=True,
-    ))
-    out = json.loads(capsys.readouterr().out)
-    assert out["created"] is True
-    assert "score" in out["claims_schema"]["properties"]
-    assert "identified_gap" in out["claims_schema"]["properties"]
-    assert "fit_tier" in out["claims_schema"]["properties"]
 
 

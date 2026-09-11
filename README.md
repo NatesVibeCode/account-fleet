@@ -93,9 +93,8 @@ free-fleet setup --workspace-root "$PWD" --refresh-routes
 Create typed tasks instantly with built-in presets:
 
 ```bash
-free-fleet init score-demo --preset score             # Numerical 0-100 fit score + evidence
+free-fleet init score-demo --preset score             # Numerical 0-100 score + grounded reasoning
 free-fleet init filter-demo --preset filter           # Boolean qualification pass/fail gate
-free-fleet init account-demo --preset account-research # ICP scoring + technical gap extraction
 free-fleet init triage-demo --preset triage           # Priority (high/medium/low) + reason
 free-fleet init classify-demo --preset classify       # Categorical labels + summary
 free-fleet init extract-demo --preset extract         # Named entities + summary
@@ -253,7 +252,7 @@ free-fleet resume <run_id>
 | `routes add` | Register an explicit custom or local model route (`--free`, `--input-cost`) |
 | `cooldowns` | Inspect active rate-limit route cooldowns or clear them (`--clear`, `--route`) |
 | `tasks` | List registered task definitions |
-| `init` | Create a typed task from a preset (`score`, `filter`, `account-research`, `triage`, `classify`, `extract`, `summarize`) |
+| `init` | Create a typed task from a preset (`score`, `filter`, `triage`, `classify`, `extract`, `summarize`) |
 | `init --from-example` | Infer a draft `claims_schema` from a labeled CSV (`--from-example labels.csv --label-column label`) |
 | `validate` | Check task schema and input formatting without inference (`--only-ids`) |
 | `test` | Run one real batch through candidate models |

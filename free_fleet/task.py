@@ -47,15 +47,6 @@ PRESETS: dict[str, dict[str, Any]] = {
         },
         "required": ["passed", "reason"],
     },
-    "account-research": {
-        "instructions": "Evaluate target account technical fit, assign an ICP fit score (0-100), identify key technical bottlenecks or gaps, and cite verbatim evidence.",
-        "properties": {
-            "score": {"type": "integer", "minimum": 0, "maximum": 100},
-            "identified_gap": {"type": "string"},
-            "fit_tier": {"enum": ["tier_1", "tier_2", "tier_3", "unfit"]},
-        },
-        "required": ["score", "identified_gap", "fit_tier"],
-    },
 }
 
 

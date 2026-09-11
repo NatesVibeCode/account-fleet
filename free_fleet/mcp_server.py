@@ -107,7 +107,7 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
         instructions: Annotated[str | None, Field(description="Optional custom instructions overriding the preset default")] = None,
         batch_size: Annotated[int, Field(ge=1, le=50, description="Inference batch size")] = 4,
     ) -> TaskRegistrationResult:
-        """Initialize and register a typed task from a built-in preset (score, filter, account-research, triage, classify, extract, summarize)."""
+        """Initialize and register a typed task from a built-in preset (score, filter, triage, classify, extract, summarize)."""
         spec = create_task_from_preset(task_name, preset_name=preset, instructions=instructions, batch_size=batch_size)
         revision = store.register_task(spec)
         return TaskRegistrationResult(task=spec.name, revision=revision)
