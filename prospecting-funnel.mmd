@@ -1,0 +1,89 @@
+flowchart TD
+    %% Global Styling
+    classDef inputNode fill:#1E293B,stroke:#64748B,stroke-width:2px,color:#F8FAFC;
+    classDef laneNode fill:#0F172A,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC;
+    classDef gateNode fill:#312E81,stroke:#818CF8,stroke-width:2px,color:#EEF2FF;
+    classDef evidenceNode fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#ECFDF5;
+    classDef dropNode fill:#450A0A,stroke:#F87171,stroke-width:1px,color:#FEF2F2;
+    classDef winnerNode fill:#14532D,stroke:#4ADE80,stroke-width:3px,color:#F0FDF4;
+
+    %% 1. Raw Universe
+    subgraph L0 ["Raw Universe (Top of Funnel)"]
+        UNIVERSE["50,000 Raw Domain URLs / Company Records\n(Public lists, directory dumps, crunchbase, CSV)"]:::inputNode
+    end
+
+    %% 2. Layer 1: Firmographic & Offering Fit
+    subgraph L1 ["Layer 1: Firmographic & Business Model Triage"]
+        L1_SCRAPE["Scrape: Homepage, Pricing Page, About Page"]:::laneNode
+        L1_FLEET["free-fleet Lane 1: classify & triage\n(Free/Local Models: Qwen-2.5-72B, Llama-3.3-70B)"]:::laneNode
+        L1_EVIDENCE["Character-Exact Evidence Gate\n• Verbatim value proposition quote\n• Strict JSON schema: B2B/B2C, pricing model, ICP fit"]:::evidenceNode
+        L1_GATE{"Dynamic Score >= 70%\n(Firmographic & ICP Fit)"}:::gateNode
+        L1_DROP["Drop 40,000 Unqualified Accounts\n(B2C, wrong tier, no pricing fit)"]:::dropNode
+
+        UNIVERSE --> L1_SCRAPE
+        L1_SCRAPE --> L1_FLEET
+        L1_FLEET --> L1_EVIDENCE
+        L1_EVIDENCE --> L1_GATE
+        L1_GATE -->|"Pass (Top 20%)"| SURVIVORS_1["10,000 Qualified ICP Accounts"]:::inputNode
+        L1_GATE -.->|"Reject (80%)"| L1_DROP
+    end
+
+    %% 3. Layer 2: Tech Stack & Architecture Pain
+    subgraph L2 ["Layer 2: Tech Stack & Vulnerability Deep-Dive"]
+        L2_SCRAPE["Scrape: Developer Docs, API Specs, Changelog, Status Pages"]:::laneNode
+        L2_FLEET["free-fleet Lane 2: extract\n(Deterministic Quote Grounding)"]:::laneNode
+        L2_EVIDENCE["Character-Exact Evidence Gate\n• Verbatim quote citing competitor tool / legacy SDK\n• Exact offsets from integration documentation"]:::evidenceNode
+        L2_GATE{"Dynamic Score >= 75%\n(Tech Stack Migration Urgency)"}:::gateNode
+        L2_DROP["Drop 7,500 Stable Accounts\n(No competitor tooling, locked into proprietary stack)"]:::dropNode
+
+        SURVIVORS_1 --> L2_SCRAPE
+        L2_SCRAPE --> L2_FLEET
+        L2_FLEET --> L2_EVIDENCE
+        L2_EVIDENCE --> L2_GATE
+        L2_GATE -->|"Pass (Top 25%)"| SURVIVORS_2["2,500 Tech-Vulnerable Accounts"]:::inputNode
+        L2_GATE -.->|"Reject (75%)"| L2_DROP
+    end
+
+    %% 4. Layer 3: Hiring Velocity & Active Intent
+    subgraph L3 ["Layer 3: Hiring Signals & Budget Allocation"]
+        L3_SCRAPE["Scrape: Active Job Boards, Role Descriptions, Greenhouse / Lever"]:::laneNode
+        L3_FLEET["free-fleet Lane 3: extract & summarize\n(High-Throughput SQLite Queue)"]:::laneNode
+        L3_EVIDENCE["Character-Exact Evidence Gate\n• Verbatim quote from open job spec citing active project\n• Proof of budget & leadership urgency"]:::evidenceNode
+        L3_GATE{"Dynamic Score >= 80%\n(Active Project Budget & Urgency)"}:::gateNode
+        L3_DROP["Drop 2,000 Passive Accounts\n(Hiring freeze, no relevant technical openings)"]:::dropNode
+
+        SURVIVORS_2 --> L3_SCRAPE
+        L3_SCRAPE --> L3_FLEET
+        L3_FLEET --> L3_EVIDENCE
+        L3_EVIDENCE --> L3_GATE
+        L3_GATE -->|"Pass (Top 20%)"| SURVIVORS_3["500 High-Intent Target Accounts"]:::inputNode
+        L3_GATE -.->|"Reject (80%)"| L3_DROP
+    end
+
+    %% 5. Layer 4: Executive Voice & Strategic Narrative
+    subgraph L4 ["Layer 4: Founder Voice & Executive Signals"]
+        L4_SCRAPE["Scrape: Founder / Exec Social Posts, Podcast Transcripts, Interviews"]:::laneNode
+        L4_FLEET["free-fleet Lane 4: summarize & triage\n(Bayesian-Ranked Quality Models)"]:::laneNode
+        L4_EVIDENCE["Character-Exact Evidence Gate\n• Verbatim quote from CEO / VP Engineering on current pain\n• Exact strategic goals for current quarter"]:::evidenceNode
+        L4_GATE{"Compound Score >= 90%\n(Sniper Account Priority)"}:::gateNode
+        L4_DROP["Deprioritize 350 Accounts\n(No recent executive narrative triggers)"]:::dropNode
+
+        SURVIVORS_3 --> L4_SCRAPE
+        L4_SCRAPE --> L4_FLEET
+        L4_FLEET --> L4_EVIDENCE
+        L4_EVIDENCE --> L4_GATE
+        L4_GATE -->|"Pass (Top 30%)"| WINNERS["150 Tier-1 Sniper Accounts"]:::winnerNode
+        L4_GATE -.->|"Nurture (70%)"| L4_DROP
+    end
+
+    %% 6. Zero-Hallucination Outbound Execution
+    subgraph OUT ["Conversion: Zero-Hallucination Outbound Engine"]
+        OUT_SYNTH["free-fleet export --format csv | jsonl\nSynthesize all 4 layers of verified claims + exact quotes"]:::winnerNode
+        OUT_HOOK["Hyper-Personalized Cold Outbound\n• Email Hook 1: Quotes CEO's exact interview remark\n• Email Hook 2: Quotes open job spec requirement\n• Email Hook 3: Quotes integration doc vulnerability\n• Zero Hallucinations — 100% Verbatim Evidence"]:::winnerNode
+        
+        METRICS["Total API Spend: $0.00\n(Zero-Cost Cloud API Routes + Local Ollama / vLLM)\nZero Clay Credit Burn | Zero Hallucinated Hooks"]:::evidenceNode
+
+        WINNERS --> OUT_SYNTH
+        OUT_SYNTH --> OUT_HOOK
+        OUT_HOOK --> METRICS
+    end
