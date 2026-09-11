@@ -1,10 +1,10 @@
-"""Generate 4-slide LinkedIn carousel — The Zero-Hallucination Account Research Playbook.
+"""Generate 4-slide LinkedIn carousel — Automated Research Suite.
 
 Universal typography, styling, and sizing system across all 4 slides:
-- Slide 1: The Deliverable (Scored & sorted target accounts with grounded evidence of gaps)
-- Slide 2: The Method (The 4-Layer Filter from 1,000 down to top 25)
-- Slide 3: The Proof System (Exact substring verification gate)
-- Slide 4: Actionable Workflow (Run in Claude Desktop / Codex Desktop, zero code)
+- Slide 1: Accounts scored, sorted, and backed by proof (every row carries its source quote)
+- Slide 2: The 4-Layer Filter — how 1,000 accounts become 25 with evidence (account research example)
+- Slide 3: Quote must match the source exactly (QuoteRef verification you can run yourself)
+- Slide 4: Run it where you already chat — Claude, Codex, Cursor, Grokbot, Antigravity
 """
 
 from pathlib import Path
@@ -412,7 +412,7 @@ def generate_carousel():
       <div class="tag-pill green"><span class="dot"></span>The Deliverable</div>
     </div>
     <div class="hero">
-      Scored, sorted, and<br/><span class="accent">backed by proof.</span>
+      Accounts scored, sorted,<br/>and <span class="accent">backed by proof.</span>
     </div>
     <div class="sub">
       The top 25 accounts ranked by fit score — with grounded evidence of their exact technical gaps.
@@ -655,7 +655,7 @@ def generate_carousel():
       <div class="tag-pill"><span class="dot"></span>Actionable Workflow</div>
     </div>
     <div class="hero">
-      Run in Claude Desktop.<br/><span class="accent-green">Zero code needed.</span>
+      Run it where<br/>you already chat.
     </div>
     <div class="sub">
       Connect once, then score accounts and extract verified gaps in plain English.
@@ -668,7 +668,7 @@ def generate_carousel():
       <div class="sub-stat-card" style="padding:18px 20px;">
         <div style="font-size:13px; font-weight:800; color:#6a9bcc; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px;">1. Connect</div>
         <div class="s-val" style="font-size:18px;">Enable Tool</div>
-        <div class="s-desc" style="font-size:14px; margin-top:6px; line-height:1.45;">Add free-fleet tool inside Claude Desktop or Codex Desktop.</div>
+        <div class="s-desc" style="font-size:14px; margin-top:6px; line-height:1.45;">Add free-fleet to Claude, Codex, Cursor, Grokbot, or any MCP host.</div>
       </div>
       <div class="sub-stat-card" style="padding:18px 20px;">
         <div style="font-size:13px; font-weight:800; color:#788c5d; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px;">2. Drop CSV</div>
@@ -688,7 +688,7 @@ def generate_carousel():
         <span class="chat-dot c-red"></span>
         <span class="chat-dot c-yellow"></span>
         <span class="chat-dot c-green"></span>
-        <span style="margin-left:8px; font-weight:700;">Claude Desktop / Codex Desktop</span>
+        <span style="margin-left:8px; font-weight:700;">Claude / Codex / Cursor / Grokbot</span>
       </div>
       <div class="chat-box-body" style="padding:18px 22px; gap:12px;">
         <div class="c-msg c-user" style="padding:14px 18px; font-size:16px;">
