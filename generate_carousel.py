@@ -176,44 +176,43 @@ def generate_carousel():
     text-align: left;
   }
 
-  /* Slide 1: Deliverable Table */
+  /* Slide 3: Deliverable Table */
   .table-card {
     background: #ffffff;
-    border: 1px solid #e8e6dc;
-    border-radius: 18px;
+    border: 1.5px solid #e8e6dc;
+    border-radius: 20px;
     overflow: hidden;
-    box-shadow: 0 2px 16px rgba(20,20,19,0.06), inset 0 1px 0 rgba(255,255,255,0.9);
+    box-shadow: 0 4px 16px rgba(20,20,19,0.04);
   }
   .table-top-bar {
     background: #141413;
-    padding: 18px 26px;
-    border-bottom: 1px solid #2a2a28;
+    padding: 20px 30px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 16px;
-    font-weight: 700;
+    font-size: 20px;
+    font-weight: 800;
     color: #faf9f5;
   }
   table.mock-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 15px;
-    text-align: left;
+    font-size: 20px;
   }
   table.mock-table th {
-    background: #f5f5f0;
-    padding: 13px 18px;
+    background: #f6f5ee;
+    padding: 18px 24px;
     color: #78716c;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 1.2px;
-    font-size: 12px;
-    border-bottom: 1px solid #e8e6dc;
+    font-size: 15px;
+    border-bottom: 1.5px solid #e8e6dc;
+    text-align: left;
   }
   table.mock-table td {
-    padding: 14px 18px;
-    border-bottom: 1px solid #f5f5f0;
+    padding: 20px 24px;
+    border-bottom: 1px solid #f0eee6;
     vertical-align: middle;
     background: #ffffff;
     line-height: 1.45;
@@ -222,28 +221,30 @@ def generate_carousel():
     border-bottom: none;
   }
   .rank-num {
-    font-size: 14px;
-    font-weight: 800;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    font-weight: 900;
+    font-size: 24px;
     color: #78716c;
   }
   .score-box {
-    background: #141413;
-    color: #faf9f5;
-    font-weight: 800;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 13px;
-    letter-spacing: 0.5px;
     display: inline-block;
-    text-align: center;
+    background: #141413;
+    color: #ffffff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    font-weight: 900;
+    font-size: 22px;
+    padding: 7px 14px;
+    border-radius: 10px;
   }
-  .mark {
-    background: #e8e6dc;
-    color: #141413;
-    padding: 2px 6px;
+  .quote-callout {
+    background: #faf9f5;
+    border-left: 3.5px solid #788c5d;
+    padding: 8px 14px;
     border-radius: 4px;
-    font-weight: 700;
-    border: 1px solid #d6d3cd;
+    color: #292524;
+    font-size: 18px;
+    font-style: italic;
+    line-height: 1.4;
   }
 
   /* Slide 2: 4-Layer Compounding Filter */
@@ -397,333 +398,418 @@ def generate_carousel():
 <!-- ======================================================================= -->
 <!-- SLIDE 1: TITLE — BALANCED, COLORFUL COVER HOOK                          -->
 <!-- ======================================================================= -->
-<div class="slide" style="justify-content:space-between; padding: 80px 75px 60px 75px;">
-  <div style="display:flex; justify-content:space-between; align-items:center;">
-    <div class="tag-pill green"><span class="dot"></span>Open Source Research Tool</div>
-    <div style="font-size:14px; font-weight:700; color:#788c5d; background:rgba(120,140,93,0.12); border:1px solid #c7d8be; padding:8px 16px; border-radius:9999px; letter-spacing:0.5px;">
-      100% Free &amp; Local
-    </div>
-  </div>
+<div class="slide" style="justify-content:space-between; padding: 80px 45px 60px 45px;">
+  <div></div>
 
-  <div style="display:flex; flex-direction:column; gap:36px; margin: auto 0;">
-    <div style="font-size:74px; font-weight:900; line-height:1.06; letter-spacing:-2.5px; color:#141413;">
-      I created a tool for you to<br/>
-      <span style="color:#6a9bcc;">research and score anything</span><br/>
-      on the public internet at scale<br/>
-      <span style="color:#788c5d;">for free</span>, like target accounts...
+  <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; margin: auto 0;">
+    <div style="font-size:134px; font-weight:900; line-height:1.05; letter-spacing:-5.5px; color:#141413; text-align:center;">
+      <div style="white-space:nowrap;">I built a tool to</div>
+      <div style="color:#6a9bcc; white-space:nowrap;">research &amp; score</div>
+      <div style="white-space:nowrap;">target accounts</div>
+      <div style="color:#788c5d; white-space:nowrap;">for free, at scale.</div>
     </div>
-    
-    <div style="font-size:26px; font-weight:600; color:#57534e; line-height:1.48; border-left:5px solid #6a9bcc; padding-left:24px; max-width:880px;">
-      Point it at live docs, career pages, or homepages. Extract verified technical gaps with character-exact evidence into your spreadsheets.
-    </div>
-  </div>
 
-  <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #e8e6dc; padding-top:24px;">
-    <div style="font-family:ui-monospace; font-size:15px; font-weight:700; color:#141413;">
-      github.com/NatesVibeCode/free-fleet
-    </div>
-    <div style="display:flex; align-items:center; gap:8px; font-size:15px; font-weight:700; color:#57534e;">
+    <div style="display:flex; align-items:center; gap:12px; font-size:32px; font-weight:800; color:#57534e; margin-top:54px; white-space:nowrap;">
       <span>Swipe to see how it works</span>
-      <span style="font-size:18px; color:#d97757;">→</span>
+      <span style="font-size:38px; color:#d97757;">→</span>
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content:center; align-items:center; border-top:1px solid #e8e6dc; padding-top:28px;">
+    <div style="font-family:ui-monospace; font-size:24px; font-weight:800; color:#141413;">
+      github.com/NatesVibeCode/free-fleet
     </div>
   </div>
 </div>
 
 <!-- ======================================================================= -->
-<!-- SLIDE 2: THE DELIVERABLE (COVER HOOK) — GOOD SLIDE PRESERVED AS 02/05  -->
 <!-- ======================================================================= -->
-<div class="slide">
+<!-- SLIDE 2: THE 100% FREE SETUP & HARNESS CONNECT                         -->
+<!-- ======================================================================= -->
+<div class="slide" style="justify-content:space-between; padding: 70px 65px 45px 65px;">
   <div class="slide-header">
-    <div class="hero">
-      Accounts scored, sorted,<br/>and <span class="accent">backed by proof.</span>
+    <div class="hero" style="font-size: 86px; line-height: 1.05; letter-spacing: -3px; margin-bottom: 14px;">
+      All you need is<br/><span class="accent-green">2 free accounts.</span>
     </div>
-    <div class="sub">
-      The top 25 accounts ranked by fit score — with grounded evidence of their exact technical gaps.
+    <div class="sub" style="font-size: 30px; font-weight: 600; color: #57534e; line-height: 1.4;">
+      Then plug it into whatever harness or chat tool you already use.
     </div>
   </div>
 
-  <div class="slide-body">
+  <div style="display:flex; flex-direction:column; gap: 24px;">
+    <!-- Step 1: OpenCode -->
+    <div class="card" style="padding: 32px 36px; gap: 14px; border-radius: 20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size: 30px; font-weight: 900; color: #141413;">1. Free OpenCode Account</div>
+        <div style="display:inline-block; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; background: rgba(120,140,93,0.12); color: #788c5d; border: 1px solid #c7d8be; padding: 6px 16px; border-radius: 12px;">Local Engine</div>
+      </div>
+      <div style="font-size: 22px; color: #57534e; line-height: 1.45;">
+        Runs your open-source coding agent locally. Orchestrates extraction with <strong>zero seat licenses</strong>.
+      </div>
+    </div>
+
+    <!-- Step 2: OpenRouter -->
+    <div class="card" style="padding: 32px 36px; gap: 14px; border-radius: 20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size: 30px; font-weight: 900; color: #141413;">2. Free OpenRouter Account</div>
+        <div style="display:inline-block; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; background: rgba(106,155,204,0.12); color: #6a9bcc; border: 1px solid #b3cde0; padding: 6px 16px; border-radius: 12px;">$0 Model Routing</div>
+      </div>
+      <div style="font-size: 22px; color: #57534e; line-height: 1.45;">
+        Routes prompts to free-tier cloud models. <strong>Zero token costs</strong>, zero spend, and zero credit card needed.
+      </div>
+    </div>
+
+    <!-- Step 3: Any Harness -->
+    <div class="card" style="padding: 32px 36px; gap: 14px; border-radius: 20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size: 30px; font-weight: 900; color: #141413;">3. Use Whatever Harness You Want</div>
+        <div style="display:inline-block; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; background: #f5f4ed; color: #57534e; border: 1px solid #e8e6dc; padding: 6px 16px; border-radius: 12px;">Your Workspace</div>
+      </div>
+      <div style="font-size: 22px; color: #57534e; line-height: 1.45;">
+        Works out of the box in <strong>Claude Desktop, Cursor, Codex, Grokbot, Antigravity</strong>, or any MCP-compatible agent.
+      </div>
+      <div style="background: #faf9f5; border: 1px solid #e8e6dc; color: #141413; font-size: 20px; font-weight: 700; padding: 14px 20px; border-radius: 12px; display: flex; align-items: center; gap: 10px;">
+        <span style="color: #788c5d; font-size: 24px;">✓</span> Add as a local MCP tool in 1 click — then just drag &amp; drop your CSV.
+      </div>
+    </div>
+
+    <!-- Trust Bar -->
+    <div style="background: #ffffff; border: 1.5px solid #e8e6dc; border-radius: 18px; padding: 22px 28px; display: flex; justify-content: space-around; align-items: center; text-align: center;">
+      <div>
+        <div style="font-size: 14px; font-weight: 800; text-transform: uppercase; color: #788c5d; letter-spacing: 1.2px;">$0 Cost</div>
+        <div style="font-size: 20px; font-weight: 800; color: #141413; margin-top: 4px;">No Credit Card</div>
+      </div>
+      <div style="height: 36px; width: 1px; background: #e8e6dc;"></div>
+      <div>
+        <div style="font-size: 14px; font-weight: 800; text-transform: uppercase; color: #6a9bcc; letter-spacing: 1.2px;">No Lock-in</div>
+        <div style="font-size: 20px; font-weight: 800; color: #141413; margin-top: 4px;">Any Agent / Chat</div>
+      </div>
+      <div style="height: 36px; width: 1px; background: #e8e6dc;"></div>
+      <div>
+        <div style="font-size: 14px; font-weight: 800; text-transform: uppercase; color: #d97757; letter-spacing: 1.2px;">Full Ownership</div>
+        <div style="font-size: 20px; font-weight: 800; color: #141413; margin-top: 4px;">Local SQLite DB</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer" style="padding-top: 18px; margin-top: 0;">
+    <div class="brand"><span>free-fleet</span> // 100% free stack</div>
+    <div class="page" style="font-size: 16px; padding: 8px 18px;">02 / 05</div>
+  </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- SLIDE 3: THE DELIVERABLE (COVER HOOK) — PRESERVED AS 03/05              -->
+<!-- ======================================================================= -->
+<div class="slide" style="justify-content:space-between; padding: 70px 65px 45px 65px;">
+  <div class="slide-header">
+    <div class="hero" style="font-size: 82px; line-height: 1.05; letter-spacing: -3px; margin-bottom: 14px;">
+      Accounts scored, sorted,<br/>and <span class="accent">backed by proof.</span>
+    </div>
+    <div class="sub" style="font-size: 30px; font-weight: 600; color: #57534e; line-height: 1.4;">
+      The top 25 accounts ranked by ICP fit — with exact evidence of technical gaps.
+    </div>
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap: 20px;">
+    <!-- Table -->
     <div class="table-card">
       <div class="table-top-bar">
-        <span>ranked_target_accounts.csv</span>
-        <span style="color:#a7c5a8; font-weight:800;">Scored &amp; sorted by fit • Top 5 shown</span>
+        <span style="font-family:ui-monospace, monospace;">ranked_target_accounts.csv</span>
+        <span style="color:#a7c5a8; font-weight:800; font-size:17px;">Scored &amp; sorted by fit • Top 5 of 25 shown</span>
       </div>
       <table class="mock-table">
         <thead>
           <tr>
-            <th style="width:8%;">Rank</th>
-            <th style="width:18%;">Account</th>
-            <th style="width:10%;">Score</th>
-            <th style="width:26%;">Identified Gap</th>
-            <th style="width:38%;">Grounded Evidence of Gap</th>
+            <th style="width:9%;">Rank</th>
+            <th style="width:21%;">Account</th>
+            <th style="width:12%;">Score</th>
+            <th style="width:58%;">Grounded Technical Evidence</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><span class="rank-num">#1</span></td>
-            <td style="font-weight:800; color:#141413;">stripe.com</td>
+            <td><span style="font-size:24px; font-weight:900; color:#141413;">stripe.com</span></td>
             <td><span class="score-box">98</span></td>
-            <td style="font-weight:700; color:#141413;">Legacy billing migration to Kafka</td>
-            <td style="font-style:italic; color:#44403c;">"<span class="mark">lead migration off legacy v1 billing pipeline</span>"</td>
+            <td>
+              <div class="quote-callout">“lead migration off legacy v1 billing pipeline to Kafka”</div>
+            </td>
           </tr>
           <tr>
             <td><span class="rank-num">#2</span></td>
-            <td style="font-weight:800; color:#141413;">hyper_ai</td>
+            <td><span style="font-size:24px; font-weight:900; color:#141413;">hyper_ai</span></td>
             <td><span class="score-box">94</span></td>
-            <td style="font-weight:700; color:#141413;">50k QPS database latency wall</td>
-            <td style="font-style:italic; color:#44403c;">"<span class="mark">hitting latency limits at 50k QPS on self-hosted Postgres</span>"</td>
+            <td>
+              <div class="quote-callout">“hitting latency limits at 50k QPS on Postgres cluster”</div>
+            </td>
           </tr>
           <tr>
             <td><span class="rank-num">#3</span></td>
-            <td style="font-weight:800; color:#141413;">pinecone.io</td>
+            <td><span style="font-size:24px; font-weight:900; color:#141413;">pinecone.io</span></td>
             <td><span class="score-box">91</span></td>
-            <td style="font-weight:700; color:#141413;">Multi-tenant cluster search scaling</td>
-            <td style="font-style:italic; color:#44403c;">"<span class="mark">scaling vector search across multi-tenant clusters</span>"</td>
+            <td>
+              <div class="quote-callout">“scaling vector search across multi-tenant clusters”</div>
+            </td>
           </tr>
           <tr>
             <td><span class="rank-num">#4</span></td>
-            <td style="font-weight:800; color:#141413;">posthog.com</td>
+            <td><span style="font-size:24px; font-weight:900; color:#141413;">posthog.com</span></td>
             <td><span class="score-box">87</span></td>
-            <td style="font-weight:700; color:#141413;">ClickHouse 2B+ event ingestion</td>
-            <td style="font-style:italic; color:#44403c;">"<span class="mark">optimizing ClickHouse to ingest 2B+ daily analytics events</span>"</td>
+            <td>
+              <div class="quote-callout">“optimizing ClickHouse to ingest 2B+ daily analytics events”</div>
+            </td>
           </tr>
           <tr>
             <td><span class="rank-num">#5</span></td>
-            <td style="font-weight:800; color:#141413;">supabase.com</td>
+            <td><span style="font-size:24px; font-weight:900; color:#141413;">supabase.com</span></td>
             <td><span class="score-box">84</span></td>
-            <td style="font-weight:700; color:#141413;">Distributed edge replication lag</td>
-            <td style="font-style:italic; color:#44403c;">"<span class="mark">building globally distributed real-time Edge Functions</span>"</td>
+            <td>
+              <div class="quote-callout">“building globally distributed Edge Functions replication”</div>
+            </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <div class="two-col-cards">
-      <div class="sub-stat-card">
-        <div class="s-tag">Prioritized Pipeline</div>
-        <div class="s-val">Scored &amp; Sorted Accounts</div>
-        <div class="s-desc">Reps focus on top-scoring accounts first instead of guessing which cold accounts have active needs.</div>
+    <!-- Takeaway Banner -->
+    <div style="background: #ffffff; border: 1.5px solid #e8e6dc; border-radius: 18px; padding: 22px 28px; display: flex; align-items: center; gap: 20px;">
+      <div style="width: 52px; height: 52px; border-radius: 14px; background: rgba(120,140,93,0.15); border: 1px solid #c7d8be; display: flex; align-items: center; justify-content: center; font-size: 26px; color: #788c5d; font-weight: 900; flex-shrink: 0;">
+        ✓
       </div>
-      <div class="sub-stat-card">
-        <div class="s-tag">Grounded Evidence</div>
-        <div class="s-val">Documented Technical Gaps</div>
-        <div class="s-desc">Every qualification is backed by verbatim text proving the company’s real bottleneck.</div>
+      <div>
+        <div style="font-size: 22px; font-weight: 900; color: #141413;">
+          Every row carries a character-exact source quote
+        </div>
+        <div style="font-size: 19px; color: #57534e; margin-top: 4px; line-height: 1.4;">
+          Reps never reach out cold with generic assumptions — they cite verified bottlenecks.
+        </div>
+      </div>
+    </div>
+
+    <!-- Deliverable Trust Bar (matching Slide 2) -->
+    <div style="background: #ffffff; border: 1.5px solid #e8e6dc; border-radius: 18px; padding: 22px 28px; display: flex; justify-content: space-around; align-items: center; text-align: center;">
+      <div>
+        <div style="font-size: 14px; font-weight: 800; text-transform: uppercase; color: #788c5d; letter-spacing: 1.2px;">Ranked Pipeline</div>
+        <div style="font-size: 20px; font-weight: 800; color: #141413; margin-top: 4px;">Top 25 Accounts</div>
+      </div>
+      <div style="height: 36px; width: 1px; background: #e8e6dc;"></div>
+      <div>
+        <div style="font-size: 14px; font-weight: 800; text-transform: uppercase; color: #6a9bcc; letter-spacing: 1.2px;">Zero Hallucinations</div>
+        <div style="font-size: 20px; font-weight: 800; color: #141413; margin-top: 4px;">Exact Source Quotes</div>
+      </div>
+      <div style="height: 36px; width: 1px; background: #e8e6dc;"></div>
+      <div>
+        <div style="font-size: 14px; font-weight: 800; text-transform: uppercase; color: #d97757; letter-spacing: 1.2px;">Actionable CSV</div>
+        <div style="font-size: 20px; font-weight: 800; color: #141413; margin-top: 4px;">Direct CRM Export</div>
       </div>
     </div>
   </div>
 
-  <div class="footer">
+  <div class="footer" style="padding-top: 18px; margin-top: 0;">
     <div class="brand"><span>free-fleet</span> // ranked &amp; actionable spreadsheets</div>
-    <div class="page">02 / 05</div>
+    <div class="page" style="font-size: 16px; padding: 8px 18px;">03 / 05</div>
   </div>
 </div>
 
 
 <!-- ======================================================================= -->
-<!-- SLIDE 2: THE 4-LAYER COMPOUNDING FILTER                                 -->
+<!-- SLIDE 4: THE 4-LAYER COMPOUNDING FILTER — PRESERVED AS 04/05            -->
 <!-- ======================================================================= -->
-<div class="slide">
+<div class="slide" style="justify-content:space-between; padding: 70px 65px 45px 65px;">
   <div class="slide-header">
-    <div class="hero">
+    <div class="hero" style="font-size: 86px; line-height: 1.05; letter-spacing: -3px;">
       The 4-Layer Filter.<br/>From 1,000 down<br/><span class="accent">to the top 25.</span>
     </div>
-    <div class="sub">
-      Don’t run one broad prompt. Compound layers of evidence, enriching only the survivors at each stage.
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap: 20px;">
+    <!-- Layer 1 -->
+    <div class="card" style="padding: 28px 30px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; border-radius: 18px;">
+      <div style="display: flex; align-items: center; gap: 22px;">
+        <div style="width: 52px; height: 52px; border-radius: 14px; background: #f5f4ed; border: 1.5px solid #e8e6dc; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 21px; color: #78716c; font-family: ui-monospace, monospace; flex-shrink: 0;">
+          L1
+        </div>
+        <div>
+          <div style="font-size: 25px; font-weight: 900; color: #141413;">Firmographic ICP Fit</div>
+          <div style="font-size: 20px; color: #57534e; margin-top: 5px; line-height: 1.4;">Scans positioning &amp; homepages. Filters out wrong-fit companies instantly.</div>
+        </div>
+      </div>
+      <div style="background: #faf9f5; border: 1.5px solid #e8e6dc; padding: 11px 0; width: 170px; text-align: center; border-radius: 12px; font-family: ui-monospace, monospace; font-weight: 800; font-size: 20px; color: #78716c; white-space: nowrap; margin-left: 20px; flex-shrink: 0;">
+        1,000 → 600
+      </div>
+    </div>
+
+    <!-- Layer 2 -->
+    <div class="card" style="padding: 28px 30px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; border-radius: 18px;">
+      <div style="display: flex; align-items: center; gap: 22px;">
+        <div style="width: 52px; height: 52px; border-radius: 14px; background: #f5f4ed; border: 1.5px solid #e8e6dc; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 21px; color: #78716c; font-family: ui-monospace, monospace; flex-shrink: 0;">
+          L2
+        </div>
+        <div>
+          <div style="font-size: 25px; font-weight: 900; color: #141413;">Tech Stack &amp; Architecture</div>
+          <div style="font-size: 20px; color: #57534e; margin-top: 5px; line-height: 1.4;">Scans developer docs &amp; changelogs. Extracts exact infrastructure stack.</div>
+        </div>
+      </div>
+      <div style="background: #faf9f5; border: 1.5px solid #e8e6dc; padding: 11px 0; width: 170px; text-align: center; border-radius: 12px; font-family: ui-monospace, monospace; font-weight: 800; font-size: 20px; color: #78716c; white-space: nowrap; margin-left: 20px; flex-shrink: 0;">
+        600 → 150
+      </div>
+    </div>
+
+    <!-- Layer 3 -->
+    <div class="card" style="padding: 28px 30px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; border-radius: 18px;">
+      <div style="display: flex; align-items: center; gap: 22px;">
+        <div style="width: 52px; height: 52px; border-radius: 14px; background: #f5f4ed; border: 1.5px solid #e8e6dc; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 21px; color: #78716c; font-family: ui-monospace, monospace; flex-shrink: 0;">
+          L3
+        </div>
+        <div>
+          <div style="font-size: 25px; font-weight: 900; color: #141413;">Hiring &amp; Budget Signals</div>
+          <div style="font-size: 20px; color: #57534e; margin-top: 5px; line-height: 1.4;">Scans active engineering job posts for urgent initiatives and tooling gaps.</div>
+        </div>
+      </div>
+      <div style="background: #faf9f5; border: 1.5px solid #e8e6dc; padding: 11px 0; width: 170px; text-align: center; border-radius: 12px; font-family: ui-monospace, monospace; font-weight: 800; font-size: 20px; color: #78716c; white-space: nowrap; margin-left: 20px; flex-shrink: 0;">
+        150 → 50
+      </div>
+    </div>
+
+    <!-- Layer 4 -->
+    <div class="card" style="padding: 28px 30px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; border-radius: 18px; border: 2px solid #6a9bcc; background: #f8fbff;">
+      <div style="display: flex; align-items: center; gap: 22px;">
+        <div style="width: 52px; height: 52px; border-radius: 14px; background: #6a9bcc; border: 1.5px solid #6a9bcc; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 21px; color: #ffffff; font-family: ui-monospace, monospace; flex-shrink: 0;">
+          L4
+        </div>
+        <div>
+          <div style="font-size: 25px; font-weight: 900; color: #141413;">Fit Scoring &amp; Verbatim Evidence</div>
+          <div style="font-size: 20px; color: #57534e; margin-top: 5px; line-height: 1.4;">Scores survivors 0–100 and clips character-exact quotes of technical gaps.</div>
+        </div>
+      </div>
+      <div style="background: #141413; border: 1.5px solid #141413; padding: 11px 0; width: 170px; text-align: center; border-radius: 12px; font-family: ui-monospace, monospace; font-weight: 900; font-size: 20px; color: #ffffff; white-space: nowrap; margin-left: 20px; flex-shrink: 0;">
+        50 → 25
+      </div>
+    </div>
+
+    <!-- Takeaway Banner -->
+    <div style="background: #ffffff; border: 1.5px solid #e8e6dc; border-radius: 18px; padding: 24px 30px; display: flex; align-items: center; gap: 22px;">
+      <div style="width: 54px; height: 54px; border-radius: 14px; background: rgba(106,155,204,0.15); border: 1px solid #b3cde0; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #6a9bcc; font-weight: 900; flex-shrink: 0;">
+        ✦
+      </div>
+      <div>
+        <div style="font-size: 23px; font-weight: 900; color: #141413;">
+          Why compounding works so well
+        </div>
+        <div style="font-size: 20px; color: #57534e; margin-top: 5px; line-height: 1.4;">
+          You only spend model compute on accounts that proved fit. Zero wasted effort on dead leads.
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="slide-body">
-    <div class="layer-grid">
-      <!-- Layer 1 -->
-      <div class="layer-card">
-        <div class="layer-badge-row">
-          <span class="layer-tag">Layer 1</span>
-          <span class="layer-scope">1,000 → 600</span>
-        </div>
-        <div class="layer-title">Firmographic ICP Fit</div>
-        <div class="layer-desc">
-          Scans homepage &amp; positioning. Immediately filters out wrong audience, B2C, and out-of-scope company types.
-        </div>
-      </div>
-
-      <!-- Layer 2 -->
-      <div class="layer-card">
-        <div class="layer-badge-row">
-          <span class="layer-tag">Layer 2</span>
-          <span class="layer-scope">600 → 150</span>
-        </div>
-        <div class="layer-title">Tech Stack &amp; Architecture</div>
-        <div class="layer-desc">
-          Scans developer docs, API changelogs, and integrations. Validates tech compatibility with verbatim quotes.
-        </div>
-      </div>
-
-      <!-- Layer 3 -->
-      <div class="layer-card">
-        <div class="layer-badge-row">
-          <span class="layer-tag">Layer 3</span>
-          <span class="layer-scope">150 → 50</span>
-        </div>
-        <div class="layer-title">Hiring &amp; Budget Signals</div>
-        <div class="layer-desc">
-          Scans active job descriptions and career pages. Pinpoints open roles citing target technologies or bottlenecks.
-        </div>
-      </div>
-
-      <!-- Layer 4 -->
-      <div class="layer-card">
-        <div class="layer-badge-row">
-          <span class="layer-tag">Layer 4 • Final 25</span>
-          <span class="layer-scope">50 → 25</span>
-        </div>
-        <div class="layer-title">Scoring &amp; Gap Analysis</div>
-        <div class="layer-desc">
-          Ranks surviving accounts by ICP fit score (0–100) and extracts verbatim evidence of their core technical gaps.
-        </div>
-      </div>
-    </div>
-
-    <div class="card" style="padding:24px 28px; gap:8px;">
-      <div style="font-size:20px; font-weight:800; color:#141413;">Why this compounds so powerfully</div>
-      <div style="font-size:16px; color:#57534e; line-height:1.55;">
-        By Layer 4, you don’t just have account names. You have 25 top-scoring accounts with verbatim evidence proving their exact technical gaps and active bottlenecks.
-      </div>
-    </div>
-  </div>
-
-  <div class="footer">
+  <div class="footer" style="padding-top: 18px; margin-top: 0;">
     <div class="brand"><span>free-fleet</span> // compounding evidence layers</div>
-    <div class="page">03 / 05</div>
+    <div class="page" style="font-size: 16px; padding: 8px 18px;">04 / 05</div>
   </div>
 </div>
 
 
 <!-- ======================================================================= -->
-<!-- SLIDE 3: HOW VERIFICATION WORKS (EXACT SUBSTRING MATCH)                -->
+<!-- SLIDE 5: HOW VERIFICATION WORKS (EXACT SUBSTRING MATCH) — AS 05/05     -->
 <!-- ======================================================================= -->
-<div class="slide">
+<div class="slide" style="justify-content:space-between; padding: 65px 65px 40px 65px;">
   <div class="slide-header">
-    <div class="hero">
+    <div class="hero" style="font-size: 86px; line-height: 1.05; letter-spacing: -3px;">
       Don’t trust AI summaries.<br/><span class="accent-green">Require exact quotes.</span>
     </div>
-    <div class="sub">
-      Every account qualification is grounded in verbatim evidence of their real technical gaps.
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap: 16px;">
+    <!-- Step 1: Raw Public Source Ingestion -->
+    <div class="card" style="padding: 24px 28px; gap: 14px; border-radius: 18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size: 14px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #78716c;">
+          1. Raw Source Ingestion
+        </div>
+        <div style="font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: #57534e; background: #f5f4ed; border: 1.5px solid #e8e6dc; padding: 5px 12px; border-radius: 8px;">
+          Public Web Page / Markdown
+        </div>
+      </div>
+      <div style="font-size: 20px; line-height: 1.5; color: #141413; background: #faf9f5; border: 1.5px solid #e8e6dc; border-radius: 12px; padding: 16px 20px;">
+        “We are looking for a Staff Engineer to join our Platform team. In this role, you will be responsible for <mark style="background: rgba(120,140,93,0.28); color: #141413; font-weight: 800; padding: 2px 6px; border-radius: 4px;">leading the migration of our legacy billing service to Apache Kafka</mark> and modernizing our distributed streaming architecture.”
+      </div>
+      <div style="font-size: 18px; color: #57534e; line-height: 1.4;">
+        Free-fleet fetches raw unedited HTML/markdown from public URLs and indexes it in local SQLite before extraction.
+      </div>
+    </div>
+
+    <!-- Step 2: Deterministic Python Verification Gate -->
+    <div class="card" style="padding: 24px 28px; gap: 14px; border: 2px solid #788c5d; border-radius: 18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size: 14px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #788c5d;">
+          2. Exact Substring Verification Gate
+        </div>
+        <div style="font-family: ui-monospace, monospace; font-size: 13px; font-weight: 800; color: #4f6336; background: #eef5e8; border: 1.5px solid #b8d0a8; padding: 5px 12px; border-radius: 8px;">
+          assert quote in raw_text
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; background: #faf9f5; border: 1.5px solid #e8e6dc; border-radius: 12px; padding: 14px 18px;">
+        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: baseline;">
+          <div style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #78716c;">Claim</div>
+          <div style="font-size: 21px; font-weight: 900; color: #141413;">Legacy billing migration to Kafka</div>
+        </div>
+        <div style="height: 1px; background: #e8e6dc;"></div>
+        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: baseline;">
+          <div style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #78716c;">Exact Quote</div>
+          <div style="font-size: 19px; font-style: italic; font-weight: 700; color: #141413;">“leading the migration of our legacy billing service to Apache Kafka”</div>
+        </div>
+        <div style="height: 1px; background: #e8e6dc;"></div>
+        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: baseline;">
+          <div style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #78716c;">Byte Offsets</div>
+          <div style="font-family: ui-monospace, monospace; font-size: 16px; font-weight: 700; color: #57534e;">chars 142 : 211 • verified match at line 1</div>
+        </div>
+      </div>
+
+      <div style="font-size: 19px; color: #57534e; line-height: 1.4;">
+        If the model hallucinates or paraphrases a single character, the substring match fails and the record is <strong>instantly discarded</strong>. Zero hallucinated claims enter your CSV.
+      </div>
+    </div>
+
+    <!-- Takeaway Banner -->
+    <div style="background: #ffffff; border: 1.5px solid #e8e6dc; border-radius: 16px; padding: 18px 24px; display: flex; align-items: center; gap: 18px;">
+      <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(120,140,93,0.15); border: 1px solid #c7d8be; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #788c5d; font-weight: 900; flex-shrink: 0;">
+        ✓
+      </div>
+      <div>
+        <div style="font-size: 21px; font-weight: 900; color: #141413;">
+          Deterministic code replaces model trust
+        </div>
+        <div style="font-size: 18px; color: #57534e; margin-top: 3px; line-height: 1.35;">
+          Python code verifies the quote against raw source text before writing any row to SQLite.
+        </div>
+      </div>
+    </div>
+
+    <!-- 3-Pillar Technical Mechanism Bar -->
+    <div style="background: #ffffff; border: 1.5px solid #e8e6dc; border-radius: 16px; padding: 18px 24px; display: flex; justify-content: space-around; align-items: center; text-align: center;">
+      <div>
+        <div style="font-size: 13px; font-weight: 800; text-transform: uppercase; color: #788c5d; letter-spacing: 1.2px;">Exact Match</div>
+        <div style="font-family: ui-monospace, monospace; font-size: 18px; font-weight: 800; color: #141413; margin-top: 3px;">quote in raw_text</div>
+      </div>
+      <div style="height: 32px; width: 1px; background: #e8e6dc;"></div>
+      <div>
+        <div style="font-size: 13px; font-weight: 800; text-transform: uppercase; color: #6a9bcc; letter-spacing: 1.2px;">Audit Trail</div>
+        <div style="font-size: 19px; font-weight: 800; color: #141413; margin-top: 3px;">URL + Char Offset</div>
+      </div>
+      <div style="height: 32px; width: 1px; background: #e8e6dc;"></div>
+      <div>
+        <div style="font-size: 13px; font-weight: 800; text-transform: uppercase; color: #d97757; letter-spacing: 1.2px;">Failure Mode</div>
+        <div style="font-size: 19px; font-weight: 800; color: #141413; margin-top: 3px;">Auto-Discarded</div>
+      </div>
     </div>
   </div>
 
-  <div class="slide-body">
-    <!-- Step 1: Raw Public Source -->
-    <div class="card" style="padding:24px 28px; gap:12px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:13px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:#78716c;">Step 1 • Public Job Post / Career Page</span>
-        <span style="font-size:13px; font-weight:700; color:#57534e; background:#f5f4ed; border:1px solid #e8e6dc; padding:4px 10px; border-radius:6px;">Role: Staff Infrastructure Engineer</span>
-      </div>
-      <div style="font-size:18px; line-height:1.55; color:#141413; background:#faf9f5; border:1px solid #e8e6dc; border-radius:12px; padding:18px 20px;">
-        “We are looking for a Staff Engineer to join our Platform team. In this role, you will be responsible for <span style="background:rgba(120,140,93,0.25); padding:2px 6px; border-radius:4px; font-weight:700;">leading the migration of our legacy billing service to Apache Kafka</span> and modernizing our distributed streaming architecture.”
-      </div>
-    </div>
-
-    <!-- Step 2: Verification Gate -->
-    <div class="card" style="padding:24px 28px; gap:12px;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:13px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:#788c5d;">Step 2 • Verbatim Verification Gate</span>
-        <span style="font-size:13px; font-weight:700; color:#788c5d; background:rgba(120,140,93,0.12); border:1px solid #c7d8be; padding:4px 10px; border-radius:6px;">✓ Substring Matched</span>
-      </div>
-      <div style="display:grid; grid-template-columns:140px 1fr; gap:10px; align-items:center; background:#faf9f5; border:1px solid #e8e6dc; border-radius:12px; padding:14px 18px;">
-        <div style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#78716c;">Identified Gap</div>
-        <div style="font-size:16px; font-weight:800; color:#141413;">Legacy Billing Migration to Kafka</div>
-        <div style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#78716c;">ICP Fit Score</div>
-        <div style="font-size:15px; font-weight:800; color:#141413;"><span class="score-box" style="padding:2px 8px; font-size:12px;">98</span> • Tier-1 Target Account</div>
-        <div style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#78716c;">Grounded Evidence</div>
-        <div style="font-size:15px; font-style:italic; color:#141413;">“leading the migration of our legacy billing service to Apache Kafka”</div>
-      </div>
-      <div style="font-size:15px; color:#57534e; line-height:1.5;">
-        If the model hallucinates a gap or assumes an unverified bottleneck, the substring match fails and the account is discarded. Every qualified account is backed by documented proof.
-      </div>
-    </div>
-
-    <div class="two-col-cards">
-      <div class="sub-stat-card">
-        <div class="s-tag">Proof Over Predictions</div>
-        <div class="s-val">Documented Gaps</div>
-        <div class="s-desc">Account qualification is anchored in an explicit bottleneck cited directly by the company.</div>
-      </div>
-      <div class="sub-stat-card">
-        <div class="s-tag">Zero Hallucinations</div>
-        <div class="s-val">1-Click Verifiable Audit</div>
-        <div class="s-desc">Anyone on your team can verify the exact sentence on the live page proving why this account qualified.</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="footer">
+  <div class="footer" style="padding-top: 16px; margin-top: 0;">
     <div class="brand"><span>free-fleet</span> // character-exact verification</div>
-    <div class="page">04 / 05</div>
-  </div>
-</div>
-
-
-<!-- ======================================================================= -->
-<!-- SLIDE 4: HOW TO RUN IT IN CLAUDE DESKTOP                                -->
-<!-- ======================================================================= -->
-<div class="slide">
-  <div class="slide-header">
-    <div class="hero">
-      Run it where<br/>you already chat.
-    </div>
-    <div class="sub">
-      Connect once, then score accounts and extract verified gaps in plain English.
-    </div>
-  </div>
-
-  <div class="slide-body">
-    <!-- 3 Simple Steps -->
-    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
-      <div class="sub-stat-card" style="padding:18px 20px;">
-        <div style="font-size:13px; font-weight:800; color:#6a9bcc; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px;">1. Connect</div>
-        <div class="s-val" style="font-size:18px;">Enable Tool</div>
-        <div class="s-desc" style="font-size:14px; margin-top:6px; line-height:1.45;">Add free-fleet to Claude, Codex, Cursor, Grokbot, or any MCP host.</div>
-      </div>
-      <div class="sub-stat-card" style="padding:18px 20px;">
-        <div style="font-size:13px; font-weight:800; color:#788c5d; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px;">2. Drop CSV</div>
-        <div class="s-val" style="font-size:18px;">Upload Accounts</div>
-        <div class="s-desc" style="font-size:14px; margin-top:6px; line-height:1.45;">Drag &amp; drop your list of companies or website URLs into chat.</div>
-      </div>
-      <div class="sub-stat-card" style="padding:18px 20px;">
-        <div style="font-size:13px; font-weight:800; color:#d97757; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px;">3. Chat</div>
-        <div class="s-val" style="font-size:18px;">Ask in Plain English</div>
-        <div class="s-desc" style="font-size:14px; margin-top:6px; line-height:1.45;">Ask Claude to score accounts, sort them, and extract grounded evidence of technical gaps.</div>
-      </div>
-    </div>
-
-    <!-- Chat Box Preview -->
-    <div class="chat-box">
-      <div class="chat-box-header">
-        <span class="chat-dot c-red"></span>
-        <span class="chat-dot c-yellow"></span>
-        <span class="chat-dot c-green"></span>
-        <span style="margin-left:8px; font-weight:700;">Claude / Codex / Cursor / Grokbot</span>
-      </div>
-      <div class="chat-box-body" style="padding:18px 22px; gap:12px;">
-        <div class="c-msg c-user" style="padding:14px 18px; font-size:16px;">
-          <div class="c-label">You</div>
-          “Triage <strong>accounts.csv</strong> to score the top accounts and extract grounded evidence of infrastructure bottlenecks and data pipeline migrations.”
-        </div>
-        <div class="c-msg c-agent" style="padding:14px 18px; font-size:16px;">
-          <div class="c-label">Claude</div>
-          ✓ Processed 100 accounts in 2 minutes • Scored and ranked top 25 accounts with grounded evidence of technical gaps • Exported <strong>ranked_accounts.csv</strong>
-        </div>
-      </div>
-    </div>
-
-    <div style="background:#ffffff; border:1px solid #e8e6dc; border-radius:12px; padding:18px 20px; text-align:center;">
-      <div style="font-size:15px; color:#57534e; line-height:1.5;">I made a tool to research anything for free — on GitHub.<br/><span style="font-family:ui-monospace; color:#141413; font-weight:700;">github.com/NatesVibeCode/free-fleet</span> <span style="color:#a8a29e;">• 100% free • runs locally</span></div>
-    </div>
-  </div>
-
-  <div class="footer">
-    <div class="brand">free-fleet • not selling anything</div>
-    <div class="page">05 / 05</div>
+    <div class="page" style="font-size: 16px; padding: 8px 18px;">05 / 05</div>
   </div>
 </div>
 
@@ -750,13 +836,6 @@ def generate_carousel():
         pix.save(str(png_path))
         print(f"  Slide {i} saved: {png_path} ({pix.width}x{pix.height})")
     doc.close()
-    
-    # Remove any extra stale slide PNGs if switching from 5 to 4 slides
-    stale_slide = carousel_dir / "slide-5.png"
-    if stale_slide.exists():
-        stale_slide.unlink()
-        print("  Removed stale slide-5.png")
-
     print("Carousel export complete!")
 
 if __name__ == "__main__":

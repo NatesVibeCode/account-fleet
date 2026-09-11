@@ -62,16 +62,23 @@ class OpenCodeProvider(BaseProvider):
 
         full_prompt = (system_prompt + "\n\n" if system_prompt else "") + prompt
         
+        # Strip provider namespace prefix if present (e.g. opencode/anthropic/claude-3-5-sonnet -> anthropic/claude-3-5-sonnet)
+        actual_model = route_id
+        if actual_model.startswith("opencode/"):
+            actual_model = actual_model[len("opencode/"):]
+        elif actual_model.startswith("opencode:"):
+            actual_model = actual_model[len("opencode:"):]
+
         # Task-local OpenCode configuration: normal CLI auth, no model tools or MCP.
         task_config = {
             "$schema": "https://opencode.ai/config.json",
-            "model": route_id,
+            "model": actual_model,
             "permission": {"*": "deny"},
             "mcp": {},
             "share": "disabled"
         }
 
-        args = ["run", "--format", "json", "--model", route_id]
+        args = ["run", "--format", "json", "--model", actual_model]
         args.append(full_prompt)
 
         try:

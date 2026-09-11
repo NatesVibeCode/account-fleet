@@ -282,3 +282,5 @@ class RouteEvaluator:
             evaluated_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             routes=results,
         )
+
+    evaluate_routes = evaluate_all

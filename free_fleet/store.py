@@ -57,6 +57,15 @@ def default_db_path() -> Path:
     return Path(configured).expanduser() if configured else Path.cwd() / "free-fleet.db"
 
 
+class ManagedConnection(sqlite3.Connection):
+    """SQLite connection subclass that guarantees file descriptor and lock release on context exit."""
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            super().__exit__(exc_type, exc_val, exc_tb)
+        finally:
+            self.close()
+
+
 class FreeFleetStore:
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path) if path is not None else default_db_path()
@@ -64,7 +73,7 @@ class FreeFleetStore:
         self.migrate()
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(str(self.path), timeout=30.0)
+        connection = sqlite3.connect(str(self.path), timeout=30.0, factory=ManagedConnection)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 30000")
@@ -289,7 +298,7 @@ class FreeFleetStore:
             )
             connection.execute("UPDATE runs SET attempts_used=attempts_used+1,status='running' WHERE run_id=?", (run_id,))
             connection.execute(
-                """INSERT INTO batch_attempts(
+                """INSERT OR REPLACE INTO batch_attempts(
                     attempt_id,run_id,batch_id,attempt_number,worker_id,status,started_at
                 ) VALUES(?,?,?,?,?,'leased',?)""",
                 (attempt_id, run_id, row["batch_id"], attempt_number, worker_id, now_iso()),
@@ -502,14 +511,37 @@ class FreeFleetStore:
             ).fetchone()
             if row is None or row["status"] != "leased" or row["lease_owner"] != worker_id:
                 return
-            new_attempts = max(0, int(row["attempts"]) - 1)
             connection.execute(
-                """UPDATE batches SET status='pending',attempts=?,lease_owner=NULL,leased_at=NULL,error=?
+                """UPDATE batches SET status='pending',lease_owner=NULL,leased_at=NULL,error=?
                    WHERE run_id=? AND batch_id=?""",
-                (new_attempts, reason or None, run_id, batch_id),
+                (reason or None, run_id, batch_id),
             )
             connection.execute("UPDATE runs SET attempts_used=max(0, attempts_used-1) WHERE run_id=?", (run_id,))
-            connection.execute("DELETE FROM batch_attempts WHERE attempt_id=?", (attempt_id,))
+            connection.execute(
+                """UPDATE batch_attempts SET status='failed',error=?,completed_at=? WHERE attempt_id=?""",
+                (reason or "Lease released", now_iso(), attempt_id),
+            )
+
+    def reset_leased_batches(self, run_id: str) -> int:
+        """Reset all batches stuck in 'leased' status back to 'pending' for resume."""
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                "SELECT batch_id, attempts FROM batches WHERE run_id=? AND status='leased'", (run_id,)
+            ).fetchall()
+            count = len(rows)
+            for row in rows:
+                connection.execute(
+                    """UPDATE batches SET status='pending', lease_owner=NULL, leased_at=NULL
+                       WHERE run_id=? AND batch_id=?""",
+                    (run_id, row["batch_id"]),
+                )
+                connection.execute(
+                    """UPDATE batch_attempts SET status='failed', error='Session interrupted or abandoned', completed_at=?
+                       WHERE run_id=? AND batch_id=? AND status='leased'""",
+                    (now_iso(), run_id, row["batch_id"]),
+                )
+            return count
 
     def set_cooldown(self, route_id: str, cooldown_until: float, reason: str = "") -> None:
         with self.connect() as connection:

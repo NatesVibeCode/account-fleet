@@ -60,8 +60,9 @@ def test_mcp_tool_error_does_not_kill_server(tmp_path):
     assert responses[1]["result"]["isError"] is True
     assert responses[2]["id"] == 3
     tools = responses[2]["result"]["tools"]
-    assert len(tools) == 13
+    assert len(tools) == 14
     tool_names = {tool["name"] for tool in tools}
+    assert "free_fleet_init" in tool_names
     assert "free_fleet_status" in tool_names
     assert "free_fleet_eval" in tool_names
     assert "free_fleet_cooldowns" in tool_names
@@ -109,6 +110,15 @@ def test_mcp_tools_execution(tmp_path):
                 "arguments": {"refresh": False, "observed_zero_only": False},
             },
         },
+        {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "free_fleet_init",
+                "arguments": {"task_name": "mcp-score-task", "preset": "score"},
+            },
+        },
     ]
     process = subprocess.Popen(
         [sys.executable, "-m", "free_fleet.cli", "serve", "--workspace-root", str(tmp_path)],
@@ -141,3 +151,9 @@ def test_mcp_tools_execution(tmp_path):
     # routes tool call
     routes_res = responses[4]["result"]
     assert "isError" not in routes_res or not routes_res["isError"]
+
+    # init tool call
+    init_res = responses[5]["result"]
+    assert "isError" not in init_res or not init_res["isError"]
+    assert "structuredContent" in init_res
+    assert init_res["structuredContent"]["task"] == "mcp-score-task"

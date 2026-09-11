@@ -186,17 +186,19 @@ class OpenAICompatibleProvider(BaseProvider):
 
         try:
             resp = _do_post(payload)
-            # If provider rejects json_schema, retry once without it
-            if resp.status_code == 400 and "response_format" in payload and "response_format" in resp.text.lower():
-                payload.pop("response_format", None)
-                if self.provider_name in ("ollama", "lmstudio", "vllm", "groq", "cerebras", "openai_compatible"):
-                    payload["response_format"] = {"type": "json_object"}
-                    resp = _do_post(payload)
-                    if resp.status_code == 400 and "response_format" in resp.text.lower():
-                        payload.pop("response_format", None)
+            # If provider rejects json_schema, retry once with json_object or raw text
+            if resp.status_code == 400 and "response_format" in payload:
+                error_body = resp.text.lower()
+                if any(kw in error_body for kw in ("response_format", "json_schema", "schema", "structured", "unrecognized", "unexpected", "extra field", "parameter")):
+                    payload.pop("response_format", None)
+                    if self.provider_name in ("ollama", "lmstudio", "vllm", "groq", "cerebras", "openai_compatible"):
+                        payload["response_format"] = {"type": "json_object"}
                         resp = _do_post(payload)
-                else:
-                    resp = _do_post(payload)
+                        if resp.status_code == 400:
+                            payload.pop("response_format", None)
+                            resp = _do_post(payload)
+                    else:
+                        resp = _do_post(payload)
 
             if resp.status_code == 429:
                 retry_sec = _parse_retry_after(resp.headers.get("retry-after"))

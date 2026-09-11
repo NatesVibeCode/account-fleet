@@ -14,6 +14,7 @@ Covers:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sqlite3
 import sys
@@ -22,7 +23,7 @@ from pathlib import Path
 import pytest
 
 import free_fleet
-from free_fleet.catalog import RouteCatalog
+from free_fleet.catalog import PriceState, RouteCatalog
 from free_fleet.cli import (
     _extract_policy,
     _maybe_emit_deprecation_notice,
@@ -30,12 +31,14 @@ from free_fleet.cli import (
     cmd_init,
     cmd_quickstart,
 )
+from free_fleet.engine import Engine
 from free_fleet.export import export_clean_packet
 from free_fleet.grounding import normalize_grounding, verify_grounding
 from free_fleet.input_data import load_input_items
 from free_fleet.models import CandidateExtractedItem, InputItem, QuoteCandidate, RoutePolicy, TaskSpec
 from free_fleet.packer import pack_items
 from free_fleet.store import FreeFleetStore
+from free_fleet.task import load_task_spec
 
 
 def test_quickstart_demo(tmp_path: Path):
@@ -296,3 +299,68 @@ def test_deprecation_notice_bulk_lanes(monkeypatch, capsys):
     _maybe_emit_deprecation_notice()
     captured = capsys.readouterr()
     assert "bulk-lanes` is deprecated" in captured.err
+
+
+def test_account_research_pipeline(tmp_path: Path):
+    db_path = tmp_path / "research_test.db"
+    store = FreeFleetStore(db_path)
+    catalog = RouteCatalog(db_path=store.path)
+    catalog.add_route(
+        route_id="demo/fake",
+        provider="demo",
+        cost_per_1k_input=0.0,
+        cost_per_1k_output=0.0,
+        enabled=True,
+        price_state=PriceState.PRICE_OBSERVED_ZERO.value,
+        verification_source="test",
+    )
+
+    task_file = Path("examples/account_research/task.json")
+    accounts_csv = Path("examples/account_research/sample_accounts.csv")
+    assert task_file.is_file()
+    assert accounts_csv.is_file()
+
+    spec = load_task_spec(task_file)
+    store.register_task(spec)
+
+    items = load_input_items(accounts_csv)
+    assert len(items) == 10
+
+    engine = Engine(task=spec, store=store, policy=RoutePolicy(allowed_routes=["demo/fake"], free_only=True))
+    packet_path = tmp_path / "accounts_packet.json"
+    run_id = "test-accounts-pipeline"
+    packet = engine.run_campaign(
+        raw_items=items,
+        run_id=run_id,
+        input_path=str(accounts_csv),
+        concurrency=2,
+        max_attempts=20,
+        output_packet_path=packet_path,
+        policy=RoutePolicy(allowed_routes=["demo/fake"], free_only=True),
+    )
+    assert packet["total_verified_records"] == 10
+
+    # Export ranked target accounts deliverable
+    ranked_csv = tmp_path / "ranked_target_accounts.csv"
+    snapshot = store.run_snapshot(run_id)
+    export_clean_packet(
+        snapshot,
+        ranked_csv,
+        export_format="csv",
+        sort_by="score",
+        descending=True,
+        top=5,
+        rank=True,
+    )
+
+    assert ranked_csv.is_file()
+    with open(ranked_csv, mode="r", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 5
+    assert [r["rank"] for r in rows] == ["1", "2", "3", "4", "5"]
+    for row in rows:
+        assert row["item_id"]
+        assert "score" in row
+        assert "primary_quote_text" in row
+        assert len(row["primary_quote_text"]) >= 15
+

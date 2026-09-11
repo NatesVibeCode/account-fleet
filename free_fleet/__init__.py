@@ -1,5 +1,5 @@
-"""Typed bulk evidence processing with exact source-offset verification."""
-__version__ = "0.2.1"
+"""Free Fleet: Coordinated free & local LLM worker fleet with closed fields and exact source evidence."""
+__version__ = "0.2.2"
 import json
 from pathlib import Path
 from .task import load_task_spec

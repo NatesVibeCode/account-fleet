@@ -36,7 +36,7 @@ from .models import (
 )
 from .packer import pack_items
 from .store import BulkLanesStore, FreeFleetStore, SCHEMA_SQL, SCHEMA_VERSION
-from .task import load_task_spec
+from .task import create_task_from_preset, load_task_spec, PRESETS
 
 
 class Workspace:
@@ -101,6 +101,18 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
         )
 
     @server.tool(structured_output=True)
+    def free_fleet_init(
+        task_name: Annotated[str, Field(description="Name of the task to register", pattern=ID_PATTERN)],
+        preset: Annotated[str, Field(description=f"Task preset template ({', '.join(sorted(PRESETS))})")] = "score",
+        instructions: Annotated[str | None, Field(description="Optional custom instructions overriding the preset default")] = None,
+        batch_size: Annotated[int, Field(ge=1, le=50, description="Inference batch size")] = 4,
+    ) -> TaskRegistrationResult:
+        """Initialize and register a typed task from a built-in preset (score, filter, account-research, triage, classify, extract, summarize)."""
+        spec = create_task_from_preset(task_name, preset_name=preset, instructions=instructions, batch_size=batch_size)
+        revision = store.register_task(spec)
+        return TaskRegistrationResult(task=spec.name, revision=revision)
+
+    @server.tool(structured_output=True)
     def free_fleet_register_task(task: TaskSpec) -> TaskRegistrationResult:
         """Validate and register one immutable, declarative task revision."""
         revision = store.register_task(task)
@@ -156,12 +168,23 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
         output_packet: Annotated[str | None, Field(description="Optional workspace-relative packet path")] = None,
         id_column: Annotated[str | None, Field(description="Optional CSV ID column")] = None,
         text_column: Annotated[str | None, Field(description="Optional CSV text column")] = None,
+        only_ids: Annotated[str | None, Field(description="Optional workspace-relative file or comma-separated list of IDs to restrict input items to")] = None,
         policy: Annotated[RoutePolicy | None, Field(description="Optional RoutePolicy with privacy, transport, or cost bounds")] = None,
     ) -> CleanPacket:
         """Create and execute a bounded, resumable SQLite-backed bulk campaign."""
         task_spec = resolve_task(task)
         input_file = workspace.path(input_path, exists=True)
-        items = load_input_items(input_file, id_column=id_column, text_column=text_column)
+        resolved_only_ids: Path | str | None = None
+        if only_ids:
+            try:
+                candidate = workspace.path(only_ids)
+                if candidate.is_file():
+                    resolved_only_ids = candidate
+                else:
+                    resolved_only_ids = only_ids
+            except Exception:
+                resolved_only_ids = only_ids
+        items = load_input_items(input_file, id_column=id_column, text_column=text_column, only_ids=resolved_only_ids)
         packet_path = workspace.path(output_packet) if output_packet else workspace.path(f"runs/{run_id}/clean_packet.json")
         packet = Engine(task=task_spec, store=store, policy=policy).run_campaign(
             raw_items=items,
@@ -207,19 +230,33 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
         task_spec = resolve_task(task)
         items = load_input_items(workspace.path(input_path, exists=True), id_column=id_column, text_column=text_column)
         evaluator = RouteEvaluator(task=task_spec, store=store)
-        return evaluator.evaluate_routes(samples=items, candidate_routes=routes)
+        return evaluator.evaluate_all(samples=items, routes=routes)
 
     @server.tool(structured_output=True)
     def free_fleet_export(
         run_id: Annotated[str, Field(description="Existing SQLite run identifier")],
         output_path: Annotated[str | None, Field(description="Optional workspace-relative export path")] = None,
-        export_format: Annotated[str, Field(description="Export format: json or csv")] = "json",
+        export_format: Annotated[str, Field(description="Export format: json, csv, or jsonl")] = "json",
+        sort_by: Annotated[str | None, Field(description="Optional claim field to sort by (e.g. score)")] = None,
+        descending: Annotated[bool, Field(description="Sort in descending order")] = True,
+        top_n: Annotated[int | None, Field(description="Limit output to top N records")] = None,
+        rank: Annotated[bool, Field(description="Prepend a 1-indexed rank column in CSV export")] = False,
+        filter_expr: Annotated[str | None, Field(description="Filter records by condition (e.g. 'passed=true', 'score>=80')")] = None,
     ) -> CleanPacket:
         """Export verified records as a self-validating typed packet (JSON) or flat CSV."""
         snapshot = store.run_snapshot(run_id)
-        default_ext = "csv" if export_format == "csv" else "json"
+        default_ext = "csv" if export_format == "csv" else ("jsonl" if export_format == "jsonl" else "json")
         destination = workspace.path(output_path) if output_path else workspace.path(f"runs/{run_id}/clean_packet.{default_ext}")
-        packet = export_clean_packet(snapshot, destination, export_format=export_format)
+        packet = export_clean_packet(
+            snapshot,
+            destination,
+            export_format=export_format,
+            sort_by=sort_by,
+            descending=descending,
+            top=top_n,
+            rank=rank,
+            filter_expr=filter_expr,
+        )
         return CleanPacket.model_validate(packet)
 
     @server.tool(structured_output=True)

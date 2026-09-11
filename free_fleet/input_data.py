@@ -92,12 +92,71 @@ class InputDataError(ValueError):
     pass
 
 
+def _resolve_only_ids(only_ids: set[str] | list[str] | str | Path | None) -> set[str] | None:
+    """Resolve an allowlist of item IDs from a set, comma-separated string, or file path."""
+    if only_ids is None:
+        return None
+    if isinstance(only_ids, (set, list)):
+        return {str(x).strip() for x in only_ids if str(x).strip()}
+
+    candidate = Path(only_ids) if isinstance(only_ids, Path) or (isinstance(only_ids, str) and (Path(only_ids).is_file() or ("," not in only_ids and "." in only_ids))) else None
+
+    if candidate and candidate.is_file():
+        suffix = candidate.suffix.lower()
+        if suffix == ".csv":
+            with open(candidate, mode="r", encoding="utf-8-sig", errors="replace") as f:
+                reader = csv.DictReader(f)
+                if reader.fieldnames:
+                    id_col = None
+                    for c in ("item_id", "id", "domain", "key", "name", "slug"):
+                        if c in reader.fieldnames:
+                            id_col = c
+                            break
+                    id_col = id_col or reader.fieldnames[0]
+                    return {(row.get(id_col) or "").strip() for row in reader if (row.get(id_col) or "").strip()}
+        elif suffix == ".jsonl":
+            ids = set()
+            for line in candidate.read_text(encoding="utf-8-sig").splitlines():
+                if line.strip():
+                    try:
+                        d = json.loads(line)
+                        if isinstance(d, dict):
+                            val = d.get("item_id") or d.get("id")
+                            if val:
+                                ids.add(str(val).strip())
+                    except Exception:
+                        pass
+            return ids
+        elif suffix == ".json":
+            try:
+                data = json.loads(candidate.read_text(encoding="utf-8-sig"))
+                records = data.get("records") if isinstance(data, dict) and "records" in data else (data if isinstance(data, list) else [])
+                ids = set()
+                for rec in records:
+                    if isinstance(rec, dict):
+                        val = rec.get("item_id") or rec.get("id")
+                        if val:
+                            ids.add(str(val).strip())
+                return ids
+            except Exception:
+                pass
+        # Plain text: one ID per line
+        return {line.strip() for line in candidate.read_text(encoding="utf-8-sig").splitlines() if line.strip()}
+
+    if isinstance(only_ids, str):
+        parts = [p.strip() for p in re.split(r"[,;\s]+", only_ids) if p.strip()]
+        return set(parts) if parts else None
+
+    return None
+
+
 def load_input_items(
     path: str | Path,
     id_column: Optional[str] = None,
     text_column: Optional[str] = None,
     title_column: Optional[str] = None,
     uri_column: Optional[str] = None,
+    only_ids: Optional[set[str] | list[str] | str | Path] = None,
 ) -> list[InputItem]:
     source = Path(path)
     if not source.is_file():
@@ -107,7 +166,7 @@ def load_input_items(
     suffix = source.suffix.lower()
     if suffix == ".jsonl":
         rows: list[object] = []
-        for line_number, line in enumerate(source.read_text().splitlines(), start=1):
+        for line_number, line in enumerate(source.read_text(encoding="utf-8-sig").splitlines(), start=1):
             if not line.strip():
                 continue
             try:
@@ -117,14 +176,14 @@ def load_input_items(
         raw_items = rows
     elif suffix == ".json":
         try:
-            raw_items = json.loads(source.read_text())
+            raw_items = json.loads(source.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError as exc:
             raise InputDataError(f"invalid JSON: {exc.msg}") from exc
         if isinstance(raw_items, dict) and set(raw_items) == {"items"}:
             raw_items = raw_items["items"]
     elif suffix == ".csv":
         try:
-            with open(source, mode="r", encoding="utf-8", errors="replace") as f:
+            with open(source, mode="r", encoding="utf-8-sig", errors="replace") as f:
                 reader = csv.DictReader(f)
                 if not reader.fieldnames:
                     raise InputDataError("CSV file has no header columns")
@@ -163,6 +222,10 @@ def load_input_items(
 
                 rows = []
                 for row_idx, row in enumerate(reader, start=1):
+                    # Skip completely empty rows (common in spreadsheet exports / trailing newlines)
+                    if not any((v or "").strip() for v in row.values() if v is not None):
+                        continue
+
                     raw_id = (row.get(resolved_id_col) or "").strip()
                     if not raw_id:
                         raise InputDataError(f"CSV row {row_idx} has empty ID column '{resolved_id_col}'")
@@ -223,4 +286,13 @@ def load_input_items(
             raise InputDataError(f"duplicate item_id: {item.item_id}")
         seen.add(item.item_id)
         items.append(item)
+
+    target_ids = _resolve_only_ids(only_ids)
+    if target_ids is not None:
+        items = [
+            item for item in items
+            if item.item_id in target_ids
+            or item.item_id.replace("_", " ") in target_ids
+            or item.item_id.replace(" ", "_") in target_ids
+        ]
     return items

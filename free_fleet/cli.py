@@ -31,7 +31,7 @@ from .models import (
 from .packer import pack_items
 from .store import BulkLanesStore, SCHEMA_SQL, SCHEMA_VERSION, default_db_path
 from .setup import installed_skill_matches, setup_workspace, skill_destination
-from .task import load_task_spec
+from .task import create_task_from_preset, load_task_spec, PRESETS
 
 
 def _split_csv_list(values: list[str] | str | None) -> list[str] | None:
@@ -97,37 +97,8 @@ def _load_input(args: argparse.Namespace) -> list[InputItem]:
         text_column=getattr(args, "text_column", None),
         title_column=getattr(args, "title_column", None),
         uri_column=getattr(args, "uri_column", None),
+        only_ids=getattr(args, "only_ids", None),
     )
-
-
-PRESETS: dict[str, dict[str, Any]] = {
-    "summarize": {
-        "instructions": "Summarize each item using only supported source facts.",
-        "properties": {"summary": {"type": "string"}},
-        "required": ["summary"],
-    },
-    "classify": {
-        "instructions": "Classify each item and give a short supported summary.",
-        "properties": {"label": {"type": "string"}, "summary": {"type": "string"}},
-        "required": ["label", "summary"],
-    },
-    "extract": {
-        "instructions": "Extract a short supported summary and the named entities present in the source.",
-        "properties": {
-            "summary": {"type": "string"},
-            "entities": {"type": "array", "items": {"type": "string"}},
-        },
-        "required": ["summary", "entities"],
-    },
-    "triage": {
-        "instructions": "Assign a supported triage priority and explain why.",
-        "properties": {
-            "priority": {"enum": ["high", "medium", "low", "unknown"]},
-            "reason": {"type": "string"},
-        },
-        "required": ["priority", "reason"],
-    },
-}
 
 
 def _package_version() -> str:
@@ -136,7 +107,7 @@ def _package_version() -> str:
             return importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
             pass
-    return "0.2.1"
+    return "0.2.2"
 
 
 def _emit(value: Any, json_mode: bool, human: str | None = None) -> None:
@@ -309,19 +280,8 @@ def cmd_init(args: argparse.Namespace) -> None:
             claims_schema=claims_schema,
         )
     else:
-        preset = PRESETS[args.preset]
+        spec = create_task_from_preset(args.name, preset_name=args.preset, batch_size=args.batch_size)
         preset_name = args.preset
-        spec = TaskSpec(
-            name=args.name,
-            instructions=preset["instructions"],
-            batch_size=args.batch_size,
-            claims_schema={
-                "type": "object",
-                "properties": preset["properties"],
-                "required": preset["required"],
-                "additionalProperties": False,
-            },
-        )
     store = _store(args)
     revision = store.register_task(spec)
     sample_path = Path(args.sample or f"{args.name}.sample.jsonl")
@@ -491,7 +451,16 @@ def cmd_export(args: argparse.Namespace) -> None:
     fmt = getattr(args, "format", "json") or "json"
     default_name = f"runs/{args.run_id}/clean_packet.{fmt}"
     output = Path(args.output or default_name)
-    packet = export_clean_packet(snapshot, output, export_format=fmt)
+    packet = export_clean_packet(
+        snapshot,
+        output,
+        export_format=fmt,
+        sort_by=getattr(args, "sort_by", None),
+        descending=bool(getattr(args, "desc", True)),
+        top=getattr(args, "top", None),
+        rank=bool(getattr(args, "rank", False)),
+        filter_expr=getattr(args, "filter_expr", None),
+    )
     _emit(
         {"run_id": args.run_id, "output": str(output), "format": fmt, "result": packet},
         args.json,
@@ -806,6 +775,7 @@ def _input_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--text-column", help="CSV column to use for source text")
     parser.add_argument("--title-column", help="Optional CSV column for item title")
     parser.add_argument("--uri-column", help="Optional CSV column for source URI")
+    parser.add_argument("--only-ids", help="Optional file (CSV, JSONL, TXT) or comma-separated list of IDs to restrict input items to")
 
 
 def _policy_options(parser: argparse.ArgumentParser) -> None:
@@ -946,6 +916,12 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("run_id")
     export.add_argument("--output")
     export.add_argument("--format", choices=["json", "csv", "jsonl"], default="json", help="Output format: json, csv, or jsonl (one record per line)")
+    export.add_argument("--sort-by", help="Claim key to sort records by (e.g. score, priority)")
+    export.add_argument("--desc", action="store_true", default=True, help="Sort descending (default: True)")
+    export.add_argument("--asc", action="store_false", dest="desc", help="Sort ascending")
+    export.add_argument("--top", type=int, help="Limit export to top N records after sorting")
+    export.add_argument("--rank", action="store_true", help="Include 1-indexed rank column in CSV export")
+    export.add_argument("--filter", dest="filter_expr", help="Filter records by claim (e.g. 'passed=true', 'score>=80', 'fit_tier=tier_1')")
     _common(export)
 
     schema = commands.add_parser("schema", help="Print an admitted JSON Schema")

@@ -46,7 +46,15 @@ def test_json_flag_works_before_command():
 
 
 def test_presets_cover_each_named_bulk_job():
-    assert set(cli.PRESETS) == {"classify", "extract", "summarize", "triage"}
+    assert set(cli.PRESETS) == {
+        "account-research",
+        "classify",
+        "extract",
+        "filter",
+        "score",
+        "summarize",
+        "triage",
+    }
 
 
 def test_routes_add_and_list_cli(tmp_path, capsys):
@@ -240,4 +248,79 @@ def test_export_and_status_cli(tmp_path, capsys, monkeypatch):
         assert reader[0]["priority"] == "high"
         assert reader[0]["reason"] == "broken button"
         assert reader[0]["primary_quote_text"] == "broken"
+
+    # Test export with sort and rank CLI
+    ranked_csv = tmp_path / "ranked.csv"
+    cli.cmd_export(Namespace(
+        run_id=run_id,
+        format="csv",
+        output=str(ranked_csv),
+        sort_by="priority",
+        desc=True,
+        top=1,
+        rank=True,
+        filter_expr=None,
+        db=str(db),
+        json=True,
+    ))
+    assert ranked_csv.is_file()
+    with open(ranked_csv, encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 1
+    assert rows[0]["rank"] == "1"
+    assert rows[0]["item_id"] == "item-1"
+
+
+def test_init_presets_score_and_account_research(tmp_path, capsys):
+    db = tmp_path / "init_test.db"
+
+    # Test score preset
+    cli.cmd_init(Namespace(
+        name="score-demo",
+        preset="score",
+        from_example=None,
+        label_column=None,
+        batch_size=5,
+        sample=str(tmp_path / "score_sample.jsonl"),
+        db=str(db),
+        json=True,
+    ))
+    out = json.loads(capsys.readouterr().out)
+    assert out["created"] is True
+    assert out["task"] == "score-demo"
+    assert "score" in out["claims_schema"]["properties"]
+    assert "reason" in out["claims_schema"]["properties"]
+
+    # Test filter preset
+    cli.cmd_init(Namespace(
+        name="filter-demo",
+        preset="filter",
+        from_example=None,
+        label_column=None,
+        batch_size=5,
+        sample=str(tmp_path / "filter_sample.jsonl"),
+        db=str(db),
+        json=True,
+    ))
+    out = json.loads(capsys.readouterr().out)
+    assert out["created"] is True
+    assert "passed" in out["claims_schema"]["properties"]
+
+    # Test account-research preset
+    cli.cmd_init(Namespace(
+        name="accounts-demo",
+        preset="account-research",
+        from_example=None,
+        label_column=None,
+        batch_size=5,
+        sample=str(tmp_path / "accts_sample.jsonl"),
+        db=str(db),
+        json=True,
+    ))
+    out = json.loads(capsys.readouterr().out)
+    assert out["created"] is True
+    assert "score" in out["claims_schema"]["properties"]
+    assert "identified_gap" in out["claims_schema"]["properties"]
+    assert "fit_tier" in out["claims_schema"]["properties"]
+
 

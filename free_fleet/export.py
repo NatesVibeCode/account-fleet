@@ -3,12 +3,88 @@ import csv
 import json
 import time
 from pathlib import Path
+from typing import Any
 from .models import CleanPacket, ExtractedItem, ProviderReceipt, RoutePolicy, TaskSpec
+
+
+def _evaluate_filter(claims: dict[str, Any], filter_expr: str) -> bool:
+    expr = filter_expr.strip()
+    op = None
+    for candidate in (">=", "<=", "!=", "=", ">", "<"):
+        if candidate in expr:
+            op = candidate
+            break
+    if not op:
+        raise ValueError(f"invalid filter expression '{filter_expr}'; must contain =, !=, >=, <=, >, or <")
+
+    key, val_str = [p.strip() for p in expr.split(op, 1)]
+    val_str = val_str.strip("'\"")
+    if key not in claims:
+        return False
+    actual = claims[key]
+
+    if val_str.lower() in ("true", "false"):
+        expected: Any = (val_str.lower() == "true")
+    else:
+        try:
+            if "." in val_str:
+                expected = float(val_str)
+            else:
+                expected = int(val_str)
+        except ValueError:
+            expected = val_str
+
+    try:
+        if op == "=":
+            return actual == expected or str(actual).lower() == str(expected).lower()
+        elif op == "!=":
+            return actual != expected and str(actual).lower() != str(expected).lower()
+        elif op == ">=":
+            return float(actual) >= float(expected)
+        elif op == "<=":
+            return float(actual) <= float(expected)
+        elif op == ">":
+            return float(actual) > float(expected)
+        elif op == "<":
+            return float(actual) < float(expected)
+    except (ValueError, TypeError):
+        return False
+    return False
+
+
+def _filter_and_sort_records(
+    records: list[ExtractedItem],
+    sort_by: str | None = None,
+    descending: bool = True,
+    top: int | None = None,
+    filter_expr: str | None = None,
+) -> list[ExtractedItem]:
+    res = list(records)
+    if filter_expr:
+        res = [r for r in res if _evaluate_filter(r.claims, filter_expr)]
+    if sort_by:
+        def sort_key(rec: ExtractedItem) -> Any:
+            v = rec.claims.get(sort_by)
+            if v is None:
+                return (0, 0.0, "") if descending else (3, 0.0, "")
+            try:
+                return (2 if descending else 1, float(v), "")
+            except (ValueError, TypeError):
+                return (1 if descending else 2, 0.0, str(v))
+        res.sort(key=sort_key, reverse=descending)
+    if top is not None and top > 0:
+        res = res[:top]
+    return res
 
 
 def export_clean_csv(
     run_data: dict,
     output_path: Path,
+    sort_by: str | None = None,
+    descending: bool = True,
+    top: int | None = None,
+    rank: bool = False,
+    filter_expr: str | None = None,
 ) -> Path:
     """Project verified records into a frictionless tabular CSV format."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -29,6 +105,14 @@ def export_clean_csv(
                 task.validate_claims(item.claims)
             verified_records.extend(validated)
 
+    verified_records = _filter_and_sort_records(
+        verified_records,
+        sort_by=sort_by,
+        descending=descending,
+        top=top,
+        filter_expr=filter_expr,
+    )
+
     # Determine all unique claim keys
     claim_keys: list[str] = []
     if task.claims_schema and "properties" in task.claims_schema:
@@ -38,14 +122,17 @@ def export_clean_csv(
             if k not in claim_keys:
                 claim_keys.append(k)
 
-    fieldnames = ["item_id"]
+    fieldnames = []
+    if rank:
+        fieldnames.append("rank")
+    fieldnames.append("item_id")
     fieldnames.extend(claim_keys)
     fieldnames.extend(["primary_quote_text", "quote_count", "source_uri", "source_digest"])
 
     with open(output_path, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        for rec in verified_records:
+        for idx, rec in enumerate(verified_records, start=1):
             row = {
                 "item_id": rec.item_id,
                 "primary_quote_text": rec.quotes[0].text if rec.quotes else "",
@@ -53,6 +140,8 @@ def export_clean_csv(
                 "source_uri": rec.source_uri or "",
                 "source_digest": rec.source_digest,
             }
+            if rank:
+                row["rank"] = idx
             for k in claim_keys:
                 val = rec.claims.get(k)
                 if isinstance(val, (dict, list)):
@@ -70,6 +159,11 @@ def export_clean_packet(
     run_data: dict,
     output_path: Path,
     export_format: str = "json",
+    sort_by: str | None = None,
+    descending: bool = True,
+    top: int | None = None,
+    rank: bool = False,
+    filter_expr: str | None = None,
 ) -> dict:
     """Validate and serialize verified records into a closed packet or CSV."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -90,6 +184,14 @@ def export_clean_packet(
             for item in validated:
                 task.validate_claims(item.claims)
             verified_records.extend(validated)
+
+    verified_records = _filter_and_sort_records(
+        verified_records,
+        sort_by=sort_by,
+        descending=descending,
+        top=top,
+        filter_expr=filter_expr,
+    )
         
     raw_receipts = run_data.get("model_runs")
     if isinstance(raw_receipts, list):
@@ -134,12 +236,20 @@ def export_clean_packet(
     packet = packet_model.model_dump(mode="json", by_alias=True)
 
     if export_format == "csv" or output_path.suffix.lower() == ".csv":
-        export_clean_csv(run_data, output_path)
+        export_clean_csv(
+            run_data,
+            output_path,
+            sort_by=sort_by,
+            descending=descending,
+            top=top,
+            rank=rank,
+            filter_expr=filter_expr,
+        )
     elif export_format == "jsonl" or output_path.suffix.lower() == ".jsonl":
         # One JSON record per line, with flattened claims + quote
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
-            for rec in verified_records:
+            for idx, rec in enumerate(verified_records, start=1):
                 flat = {
                     "item_id": rec.item_id,
                     "source_uri": rec.source_uri,
@@ -149,8 +259,11 @@ def export_clean_packet(
                     "quote_count": len(rec.quotes),
                     "quotes": [q.model_dump(mode="json") for q in rec.quotes],
                 }
+                if rank:
+                    flat["rank"] = idx
                 f.write(json.dumps(flat, ensure_ascii=False) + "\n")
     else:
         output_path.write_text(json.dumps(packet, indent=2))
 
     return packet
+

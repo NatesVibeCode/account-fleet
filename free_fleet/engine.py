@@ -334,6 +334,8 @@ class Engine:
     ) -> dict:
         """Resume pending SQLite queue work without reconstructing it from input files."""
         self.task = self.store.get_run_task(run_id)
+        # Reclaim any batches abandoned in 'leased' status from prior interrupted worker sessions
+        self.store.reset_leased_batches(run_id)
         snapshot = self.store.run_snapshot(run_id)
         if not self.policy and snapshot.get("policy"):
             self.policy = RoutePolicy.model_validate(snapshot["policy"])

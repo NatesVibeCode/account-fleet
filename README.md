@@ -93,38 +93,58 @@ free-fleet setup --workspace-root "$PWD" --refresh-routes
 Create typed tasks instantly with built-in presets:
 
 ```bash
-free-fleet init classify-demo --preset classify
-free-fleet init extract-demo --preset extract
-free-fleet init triage-demo --preset triage
-free-fleet init summarize-demo --preset summarize
+free-fleet init score-demo --preset score             # Numerical 0-100 fit score + evidence
+free-fleet init filter-demo --preset filter           # Boolean qualification pass/fail gate
+free-fleet init account-demo --preset account-research # ICP scoring + technical gap extraction
+free-fleet init triage-demo --preset triage           # Priority (high/medium/low) + reason
+free-fleet init classify-demo --preset classify       # Categorical labels + summary
+free-fleet init extract-demo --preset extract         # Named entities + summary
+free-fleet init summarize-demo --preset summarize     # Supported fact summaries
 ```
 
 Validate and test before launching large runs:
 
 ```bash
 # Validate task spec and input without making any API calls
-free-fleet validate classify-demo --input input.jsonl
+free-fleet validate score-demo --input input.jsonl
 
 # Test a single real batch
-free-fleet test classify-demo --input input.jsonl
+free-fleet test score-demo --input input.jsonl
 ```
 
 ---
 
 ## Core Capabilities
 
-### 1. CSV In / CSV Out
-Directly process tabular data without custom transformation scripts:
+### 1. CSV In / Scored, Ranked CSV Out
+Directly process tabular data and export sorted, ranked deliverables with exact source quotes:
 
 ```bash
-# Run on CSV specifying ID and text columns
-free-fleet run my-task --input records.csv --id-column id --text-column body
+# Run on CSV specifying ID and text columns (or let free-fleet auto-detect them)
+free-fleet run score-demo --input accounts.csv --run-id accts-01
 
-# Export directly to CSV
-free-fleet export <run_id> --format csv --output results.csv
+# Export ranked deliverable: sorted by score descending, top 25, with 1-indexed rank column
+free-fleet export accts-01 --format csv --sort-by score --desc --top 25 --rank --output ranked_target_accounts.csv
 ```
 
-### 2. Live Run Monitoring
+### 2. The Compounding Filter (Chaining Layers)
+Run multi-stage funnel filtering without running monolithic prompts or wasting model compute:
+
+```bash
+# Layer 1: Filter down to survivors
+free-fleet run l1-task --input 1000_candidates.csv --run-id l1
+free-fleet export l1 --format csv --filter "passed=true" --output l1_survivors.csv
+
+# Layer 2: Only run on survivor IDs from Layer 1
+free-fleet run l2-task --input tech_docs.csv --only-ids l1_survivors.csv --run-id l2
+free-fleet export l2 --format csv --filter "passed=true" --output l2_survivors.csv
+
+# Final Layer: Score survivors and rank top candidates
+free-fleet run l3-task --input gap_analysis.csv --only-ids l2_survivors.csv --run-id l3
+free-fleet export l3 --format csv --sort-by score --desc --top 25 --rank --output ranked_deliverable.csv
+```
+
+### 3. Live Run Monitoring
 Track queue progress, worker concurrency, and route-level metrics in real time:
 
 ```bash
@@ -233,22 +253,23 @@ free-fleet resume <run_id>
 | `routes add` | Register an explicit custom or local model route (`--free`, `--input-cost`) |
 | `cooldowns` | Inspect active rate-limit route cooldowns or clear them (`--clear`, `--route`) |
 | `tasks` | List registered task definitions |
-| `init` | Create a typed task from a preset (`classify`, `extract`, `triage`, `summarize`) |
+| `init` | Create a typed task from a preset (`score`, `filter`, `account-research`, `triage`, `classify`, `extract`, `summarize`) |
 | `init --from-example` | Infer a draft `claims_schema` from a labeled CSV (`--from-example labels.csv --label-column label`) |
-| `validate` | Check task schema and input formatting without inference |
+| `validate` | Check task schema and input formatting without inference (`--only-ids`) |
 | `test` | Run one real batch through candidate models |
-| `run` | Create and execute a SQLite-backed resumable run |
+| `run` | Create and execute a SQLite-backed resumable run (`--only-ids` for compounding filter) |
 | `resume` | Resume an unfinished run from its SQLite queue |
 | `status` | Show real-time progress, attempts, and route stats (`--watch`, `--json`) |
 | `eval` | Benchmark routes on sample inputs and update route ranking priors (`--concurrency`) |
 | `sessions` | Inspect recorded worker sessions and audit logs |
-| `export` | Export a validated packet (`--format json\|csv\|jsonl`) |
+| `export` | Export a validated packet (`--format json\|csv\|jsonl`, `--sort-by`, `--desc`, `--top`, `--rank`, `--filter`) |
 | `db backup` | SQLite backup to file (safe while running) |
 | `schema` | Print admitted JSON Schemas or database contracts |
 | `mcp install` | One-command Claude/Cursor setup (auto-wires `claude_desktop_config.json` / `mcp.json`) |
 | `serve` | Run the Model Context Protocol (MCP) server over stdio |
 
 Pass `--json` to any command for machine-readable JSON output. `--free-only` is the explicit zero-cost filter (replaces implicit `max-cost=0` sentinel). Long documents are warned when truncated (`partial` slices).
+
 
 ---
 

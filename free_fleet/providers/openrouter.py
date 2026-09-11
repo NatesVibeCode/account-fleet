@@ -164,9 +164,11 @@ class OpenRouterProvider(BaseProvider):
 
         try:
             resp = _do_post(payload)
-            if resp.status_code == 400 and "response_format" in payload and "response_format" in resp.text.lower():
-                payload.pop("response_format", None)
-                resp = _do_post(payload)
+            if resp.status_code == 400 and "response_format" in payload:
+                error_body = resp.text.lower()
+                if any(kw in error_body for kw in ("response_format", "json_schema", "schema", "structured", "unrecognized", "unexpected", "extra field", "parameter")):
+                    payload.pop("response_format", None)
+                    resp = _do_post(payload)
 
             if resp.status_code == 429:
                 retry_hdr = resp.headers.get("retry-after")

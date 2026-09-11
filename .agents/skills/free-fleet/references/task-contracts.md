@@ -5,6 +5,9 @@ Read this when creating or importing a task.
 Prefer a preset:
 
 ```bash
+free-fleet init score-demo --preset score
+free-fleet init filter-demo --preset filter
+free-fleet init account-demo --preset account-research
 free-fleet init labels --preset classify
 free-fleet init facts --preset extract
 free-fleet init queue --preset triage

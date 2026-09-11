@@ -12,13 +12,13 @@ RESET = "\033[0m"
 
 def banner():
     art = r"""
-  ___        _ _      _                           
- | _ ) _  _ | | |__  | |   __ _ _ _  ___ ___ 
- | _ \| || || | / /  | |__/ _` | ' \/ -_|_-< 
- |___/ \_,_||_|_\_\  |____\__,_|_||_\___/__/ 
+  ___               ___ _          _   
+ | __| _ ___ ___   | __| |___  ___| |_ 
+ | _| '_/ -_) -_)  | _|| / -_)/ -_)  _|
+ |_||_| \___|___|  |_| |_\___|\___|\__|
 """
     print(f"{CYAN}{BOLD}{art}{RESET}")
-    print(f" {DIM}Typed Bulk Extraction (OpenCode + OpenRouter){RESET}\n")
+    print(f" {DIM}Coordinated Free & Local LLM Fleet{RESET}\n")
 
 def print_routes_table(routes: list):
     print(f"{BOLD}{'ROUTE ID':<45} {'PROVIDER':<12} {'PRICE STATE':<22} {'STATUS'}{RESET}")

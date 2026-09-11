@@ -99,3 +99,139 @@ def test_csv_export_projection(tmp_path):
         assert row["sentiment"] == "positive"
         assert row["primary_quote_text"] == "great cloud provider"
         assert row["quote_count"] == "1"
+
+
+def test_csv_export_sorting_ranking_and_filtering(tmp_path):
+    import hashlib
+    import json
+
+    task = TaskSpec(
+        name="score-task",
+        claims_schema={
+            "type": "object",
+            "properties": {
+                "score": {"type": "integer"},
+                "passed": {"type": "boolean"},
+                "tier": {"type": "string"},
+            },
+            "required": ["score", "passed", "tier"],
+            "additionalProperties": False,
+        },
+    )
+    task_payload = task.model_dump(mode="json", by_alias=True)
+    task_revision = hashlib.sha256(
+        json.dumps(task_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    ).hexdigest()
+
+    def make_item(item_id, score, passed, tier, quote):
+        return {
+            "item_id": item_id,
+            "source_uri": f"https://example.com/{item_id}",
+            "source_digest": "a" * 64,
+            "content_type": "text/plain",
+            "claims": {"score": score, "passed": passed, "tier": tier},
+            "quotes": [{
+                "slice_id": "full",
+                "start": 0,
+                "end": len(quote),
+                "text": quote,
+            }],
+        }
+
+    run_data = {
+        "run_id": "scoring-run",
+        "task": task_payload,
+        "task_revision": task_revision,
+        "input_digest": "1" * 64,
+        "batches": {
+            "b1": {
+                "status": "verified",
+                "result": [
+                    make_item("stripe.com", 98, True, "tier_1", "migration off legacy v1 billing pipeline"),
+                    make_item("unfit.co", 30, False, "unfit", "simple WordPress site with no infra"),
+                    make_item("hyper_ai", 94, True, "tier_1", "hitting latency limits at 50k QPS"),
+                    make_item("pinecone.io", 91, True, "tier_1", "scaling vector search across multi-tenant"),
+                    make_item("small_app", 65, True, "tier_2", "using sqlite on single VPS"),
+                ],
+            }
+        },
+        "model_runs": [],
+    }
+
+    # Test 1: Sort by score descending, top 3, with rank column
+    ranked_csv = tmp_path / "ranked.csv"
+    export_clean_packet(
+        run_data,
+        ranked_csv,
+        export_format="csv",
+        sort_by="score",
+        descending=True,
+        top=3,
+        rank=True,
+    )
+    assert ranked_csv.is_file()
+    with open(ranked_csv, mode="r", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 3
+    assert [r["rank"] for r in rows] == ["1", "2", "3"]
+    assert [r["item_id"] for r in rows] == ["stripe.com", "hyper_ai", "pinecone.io"]
+    assert [r["score"] for r in rows] == ["98", "94", "91"]
+
+    # Test 2: Filter by passed=true
+    survivors_csv = tmp_path / "survivors.csv"
+    export_clean_packet(
+        run_data,
+        survivors_csv,
+        export_format="csv",
+        filter_expr="passed=true",
+    )
+    with open(survivors_csv, mode="r", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 4
+    assert "unfit.co" not in [r["item_id"] for r in rows]
+
+    # Test 3: Filter by score>=90
+    high_score_csv = tmp_path / "high_score.csv"
+    export_clean_packet(
+        run_data,
+        high_score_csv,
+        export_format="csv",
+        filter_expr="score>=90",
+        sort_by="score",
+        descending=True,
+        rank=True,
+    )
+    with open(high_score_csv, mode="r", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 3
+    assert [r["item_id"] for r in rows] == ["stripe.com", "hyper_ai", "pinecone.io"]
+
+
+def test_load_input_items_with_only_ids(tmp_path):
+    all_accounts = tmp_path / "all_accounts.csv"
+    all_accounts.write_text(
+        "domain,research\n"
+        "stripe.com,leading payment infrastructure\n"
+        "hyper_ai,fast GPU infrastructure\n"
+        "pinecone.io,vector search engine\n"
+        "unfit.co,local bakery blog\n"
+    )
+
+    # 1. only_ids from CSV file (e.g. survivors from previous layer)
+    survivors_file = tmp_path / "survivors.csv"
+    survivors_file.write_text("item_id,passed\nstripe.com,true\nhyper_ai,true\n")
+
+    items_from_file = load_input_items(all_accounts, only_ids=survivors_file)
+    assert len(items_from_file) == 2
+    assert {i.item_id for i in items_from_file} == {"stripe.com", "hyper_ai"}
+
+    # 2. only_ids as comma-separated string
+    items_from_str = load_input_items(all_accounts, only_ids="stripe.com, pinecone.io")
+    assert len(items_from_str) == 2
+    assert {i.item_id for i in items_from_str} == {"stripe.com", "pinecone.io"}
+
+    # 3. only_ids as set
+    items_from_set = load_input_items(all_accounts, only_ids={"hyper_ai"})
+    assert len(items_from_set) == 1
+    assert items_from_set[0].item_id == "hyper_ai"
+

@@ -168,16 +168,26 @@ def normalize_grounding(
             if source_slice is None:
                 return None, f"Item '{item.item_id}' references unknown slice '{candidate.slice_id}'."
 
+            slice_text = source_slice.get("text", "")
+            slice_start = int(source_slice["start"])
+            slice_end = int(source_slice["end"])
+
+            # Check if model provided offsets that are ALREADY verbatim accurate
+            offsets_valid = False
             if candidate.start is not None and candidate.end is not None:
-                start, end = candidate.start, candidate.end
-            else:
-                slice_text = source_slice.get("text", "")
+                rel_s = candidate.start - slice_start
+                rel_e = candidate.end - slice_start
+                if 0 <= rel_s < rel_e <= len(slice_text) and slice_text[rel_s:rel_e] == candidate.text:
+                    start, end = candidate.start, candidate.end
+                    offsets_valid = True
+
+            if not offsets_valid:
                 # 1) Exact match
                 first = slice_text.find(candidate.text)
                 if first >= 0:
                     if slice_text.find(candidate.text, first + 1) >= 0:
                         return None, f"Item '{item.item_id}' quote is ambiguous in slice '{candidate.slice_id}'; provide exact offsets."
-                    start = int(source_slice["start"]) + first
+                    start = slice_start + first
                     end = start + len(candidate.text)
                 else:
                     # 2) Unicode-normalized match via index map
