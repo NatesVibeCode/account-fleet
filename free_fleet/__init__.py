@@ -1,5 +1,5 @@
 """Free Fleet: Coordinated free & local LLM worker fleet with closed fields and exact source evidence."""
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 import json
 from pathlib import Path
 from .task import load_task_spec
