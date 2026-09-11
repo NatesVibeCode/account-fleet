@@ -395,20 +395,16 @@ def generate_carousel():
 <body>
 
 <!-- ======================================================================= -->
-<!-- SLIDE 1: TITLE — CENTERED, 2 LINES, NO PILLS, NO FOOTER                   -->
+<!-- SLIDE 1: TITLE — OPERATOR STATEMENT IN BIG LETTERS                     -->
 <!-- ======================================================================= -->
 <div class="slide" style="justify-content:center; align-items:center; text-align:center; padding: 96px 60px;">
-  <div style="display:flex; flex-direction:column; align-items:center; gap:22px; width:100%; max-width:920px;">
-    <div class="hero" style="font-size:92px; line-height:0.88; letter-spacing:-3px; text-align:center;">
-      Research and score<br/><span class="accent">anything</span> at scale, for free.
+  <div style="display:flex; flex-direction:column; align-items:center; gap:26px; width:100%; max-width:960px;">
+    <div class="hero" style="font-size:72px; line-height:1.02; letter-spacing:-2.2px; text-align:center;">
+      I created a tool for you to research and score anything on the public internet at scale <span class="accent">for free</span>, like target accounts...
     </div>
-    <div style="font-size:20px; font-weight:500; color:#57534e; text-align:center; margin-top:12px;">
-      Your target accounts • Your docs • Your criteria — every row backed by proof.
+    <div style="font-family:ui-monospace; font-size:14px; color:#a8a29e; text-align:center; margin-top:16px;">
+      github.com/NatesVibeCode/free-fleet • MIT • 100% local
     </div>
-    <div style="font-size:15px; font-weight:600; color:#78716c; text-align:center; margin-top:16px;">
-      I created a tool to research anything for free — on GitHub
-    </div>
-    <div style="font-family:ui-monospace; font-size:13px; color:#a8a29e; text-align:center; margin-top:6px;">github.com/NatesVibeCode/free-fleet • MIT</div>
   </div>
 </div>
 
