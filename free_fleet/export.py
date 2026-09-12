@@ -52,13 +52,48 @@ def _evaluate_filter(claims: dict[str, Any], filter_expr: str) -> bool:
     return False
 
 
+def adjust_claim_score(raw: Any, bias: float = 0.0, low: float = 0.0, high: float = 100.0) -> float | None:
+    """Return bias-corrected numeric claim score, clamped to [low, high]. None if non-numeric."""
+    try:
+        return max(low, min(high, float(raw) - float(bias)))
+    except (ValueError, TypeError):
+        return None
+
+
+def _build_item_route_map(run_data: dict) -> dict[str, str]:
+    """Map item_id -> producing route_id via batch receipts. Best-effort; missing entries omitted."""
+    mapping: dict[str, str] = {}
+    for batch in (run_data.get("batches") or {}).values():
+        receipt = batch.get("receipt") or {}
+        route_id = receipt.get("requested_route") or receipt.get("route_id")
+        if not route_id:
+            continue
+        result = batch.get("result")
+        items: list[dict] = []
+        if isinstance(result, list):
+            items = result
+        elif isinstance(result, dict) and isinstance(result.get("items"), list):
+            items = result["items"]
+        for item in items:
+            item_id = item.get("item_id") if isinstance(item, dict) else None
+            if item_id:
+                mapping[str(item_id)] = str(route_id)
+    return mapping
+
+
 def _filter_and_sort_records(
     records: list[ExtractedItem],
     sort_by: str | None = None,
     descending: bool = True,
     top: int | None = None,
     filter_expr: str | None = None,
+    bias_map: dict[str, float] | None = None,
+    score_field: str | None = None,
+    item_route_map: dict[str, str] | None = None,
 ) -> list[ExtractedItem]:
+    """Filter/sort records. When bias_map+score_field are given and sort_by==score_field,
+    ranking uses bias-adjusted scores (raw - route bias) so mixed-rater CSVs stay comparable.
+    Raw claims are never mutated; only the sort key changes."""
     res = list(records)
     if filter_expr:
         res = [r for r in res if _evaluate_filter(r.claims, filter_expr)]
@@ -68,9 +103,16 @@ def _filter_and_sort_records(
             if v is None:
                 return (0, 0.0, "") if descending else (3, 0.0, "")
             try:
-                return (2 if descending else 1, float(v), "")
+                numeric = float(v)
             except (ValueError, TypeError):
                 return (1 if descending else 2, 0.0, str(v))
+            if bias_map and score_field and sort_by == score_field and item_route_map:
+                route_id = item_route_map.get(rec.item_id)
+                if route_id and route_id in bias_map:
+                    adj = adjust_claim_score(numeric, bias_map[route_id])
+                    if adj is not None:
+                        numeric = adj
+            return (2 if descending else 1, numeric, "")
         res.sort(key=sort_key, reverse=descending)
     if top is not None and top > 0:
         res = res[:top]
@@ -85,6 +127,8 @@ def export_clean_csv(
     top: int | None = None,
     rank: bool = False,
     filter_expr: str | None = None,
+    bias_map: dict[str, float] | None = None,
+    score_field: str | None = None,
 ) -> Path:
     """Project verified records into a frictionless tabular CSV format."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,12 +149,16 @@ def export_clean_csv(
                 task.validate_claims(item.claims)
             verified_records.extend(validated)
 
+    item_route_map = _build_item_route_map(run_data) if bias_map and score_field else None
     verified_records = _filter_and_sort_records(
         verified_records,
         sort_by=sort_by,
         descending=descending,
         top=top,
         filter_expr=filter_expr,
+        bias_map=bias_map,
+        score_field=score_field,
+        item_route_map=item_route_map,
     )
 
     # Determine all unique claim keys
@@ -164,6 +212,8 @@ def export_clean_packet(
     top: int | None = None,
     rank: bool = False,
     filter_expr: str | None = None,
+    bias_map: dict[str, float] | None = None,
+    score_field: str | None = None,
 ) -> dict:
     """Validate and serialize verified records into a closed packet or CSV."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,14 +235,18 @@ def export_clean_packet(
                 task.validate_claims(item.claims)
             verified_records.extend(validated)
 
+    item_route_map = _build_item_route_map(run_data) if bias_map and score_field else None
     verified_records = _filter_and_sort_records(
         verified_records,
         sort_by=sort_by,
         descending=descending,
         top=top,
         filter_expr=filter_expr,
+        bias_map=bias_map,
+        score_field=score_field,
+        item_route_map=item_route_map,
     )
-        
+
     raw_receipts = run_data.get("model_runs")
     if isinstance(raw_receipts, list):
         receipts = [ProviderReceipt.model_validate(receipt) for receipt in raw_receipts]
@@ -244,6 +298,8 @@ def export_clean_packet(
             top=top,
             rank=rank,
             filter_expr=filter_expr,
+            bias_map=bias_map,
+            score_field=score_field,
         )
     elif export_format == "jsonl" or output_path.suffix.lower() == ".jsonl":
         # One JSON record per line, with flattened claims + quote

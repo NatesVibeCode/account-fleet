@@ -188,13 +188,14 @@ def test_inference_attempts_recorded_in_sqlite_on_failure_and_success(tmp_path):
     assert attempts[1]["outcome"] == "verified"
     assert attempts[1]["verified"] == 1
 
-    # Verify route history stats reflects the attempts
+    # Verify route history stats reflects the attempts (decayed effective counts ≈1)
     stats = engine.store.get_route_history_stats(task_name="multi-test")
     assert first_route in stats
-    assert stats[first_route]["total"] == 1
-    assert stats[first_route]["completed"] == 0
-    assert stats[first_route]["malformed"] == 1
+    # Totals are decayed effective sample sizes (floats), not raw counts.
+    assert abs(stats[first_route]["total"] - 1.0) < 1e-3
+    assert abs(stats[first_route]["completed"] - 0.0) < 1e-3
+    assert abs(stats[first_route]["malformed"] - 1.0) < 1e-3
 
     assert second_route in stats
-    assert stats[second_route]["total"] == 1
-    assert stats[second_route]["completed"] == 1
+    assert abs(stats[second_route]["total"] - 1.0) < 1e-3
+    assert abs(stats[second_route]["completed"] - 1.0) < 1e-3

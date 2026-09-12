@@ -455,6 +455,15 @@ def cmd_export(args: argparse.Namespace) -> None:
     fmt = getattr(args, "format", "json") or "json"
     default_name = f"runs/{args.run_id}/clean_packet.{fmt}"
     output = Path(args.output or default_name)
+    bias_map: dict[str, float] | None = None
+    score_field = getattr(args, "score_field", "score") or "score"
+    if getattr(args, "adjust_scores", False):
+        try:
+            task_name = (snapshot.get("task") or {}).get("name")
+            raw_bias = store.get_route_claim_bias(task_name) if task_name else {}
+            bias_map = {v["route_id"]: v["bias"] for v in raw_bias.values()}
+        except Exception:
+            bias_map = None
     packet = export_clean_packet(
         snapshot,
         output,
@@ -464,6 +473,8 @@ def cmd_export(args: argparse.Namespace) -> None:
         top=getattr(args, "top", None),
         rank=bool(getattr(args, "rank", False)),
         filter_expr=getattr(args, "filter_expr", None),
+        bias_map=bias_map,
+        score_field=score_field,
     )
     _emit(
         {"run_id": args.run_id, "output": str(output), "format": fmt, "result": packet},
@@ -788,7 +799,7 @@ def _input_options(parser: argparse.ArgumentParser) -> None:
 def _policy_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--transport", "--provider", dest="provider", action="append", help="Allow specific transport provider (can repeat or comma-separate)")
     parser.add_argument("--exclude-transport", "--exclude-provider", dest="exclude_provider", action="append", help="Exclude specific transport provider (can repeat or comma-separate)")
-    parser.add_argument("--route", action="append", help="Allow specific route ID (can repeat or comma-separate)")
+    parser.add_argument("--route", action="append", help="Allow specific route ID (can repeat or comma-separate). Pin a single --route for Phase-B judge scoring so ranked deliverables use one rater.")
     parser.add_argument("--exclude-route", action="append", help="Exclude specific route ID (can repeat or comma-separate)")
     parser.add_argument("--zdr", action="store_true", help="Require Zero Data Retention upstream")
     parser.add_argument("--no-data-collection", action="store_true", help="Deny provider data collection")
@@ -929,6 +940,8 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--top", type=int, help="Limit export to top N records after sorting")
     export.add_argument("--rank", action="store_true", help="Include 1-indexed rank column in CSV export")
     export.add_argument("--filter", dest="filter_expr", help="Filter records by claim (e.g. 'passed=true', 'score>=80', 'fit_tier=tier_1')")
+    export.add_argument("--adjust-scores", action="store_true", help="Rank by bias-adjusted scores (raw - per-route bias from eval goldens). Recommended when Phase-A used multiple raters; prefer single-judge Phase-B for final ranking.")
+    export.add_argument("--score-field", default="score", help="Numeric claim field bias applies to (default: score)")
     _common(export)
 
     schema = commands.add_parser("schema", help="Print an admitted JSON Schema")
