@@ -1,5 +1,5 @@
 """Free Fleet: Coordinated free & local LLM worker fleet with closed fields and exact source evidence."""
-__version__ = "0.2.4"
+__version__ = "0.2.5"
 import json
 from pathlib import Path
 from .task import load_task_spec
@@ -8,6 +8,7 @@ from .catalog import RouteCatalog
 from .grounding import verify_grounding
 from .models import CleanPacket, ExtractedItem, InputItem, ModelOutput, QuoteRef, TaskSpec
 from .input_data import load_input_items
+from .discover import fetch_text, run_discovery
 from .store import BulkLanesStore, FreeFleetStore
 from .slicer import slice_document
 from .packer import pack_items
@@ -107,6 +108,8 @@ __all__ = [
     "FreeFleetStore",
     "BulkLanesStore",
     "load_input_items",
+    "fetch_text",
+    "run_discovery",
     "slice_document",
     "pack_items",
     "export_clean_packet",
