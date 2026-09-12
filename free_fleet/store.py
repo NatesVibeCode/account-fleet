@@ -52,6 +52,30 @@ def digest_json(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _parse_iso_ts(value: Any) -> float | None:
+    """Parse ISO-8601 / SQLite datetime text to epoch seconds. Returns None if unparseable."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        text = value.strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        # SQLite CURRENT_TIMESTAMP style "YYYY-MM-DD HH:MM:SS" has no tz; assume UTC.
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except Exception:
+        return None
+
+
+def _decay_weight(ts: float | None, now_ts: float, half_life_hours: float) -> float:
+    if half_life_hours <= 0 or ts is None:
+        return 1.0
+    age_hours = max(0.0, (now_ts - ts) / 3600.0)
+    return 0.5 ** (age_hours / half_life_hours)
+
+
 def default_db_path() -> Path:
     configured = os.environ.get("FREE_FLEET_DB", os.environ.get("BULK_LANES_DB"))
     return Path(configured).expanduser() if configured else Path.cwd() / "free-fleet.db"
@@ -91,6 +115,16 @@ class FreeFleetStore:
             cols = [row["name"] for row in connection.execute("PRAGMA table_info(runs)").fetchall()]
             if "policy_json" not in cols:
                 connection.execute("ALTER TABLE runs ADD COLUMN policy_json TEXT")
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS route_claim_bias(
+                    task_name TEXT NOT NULL,
+                    route_id TEXT NOT NULL,
+                    bias REAL NOT NULL DEFAULT 0.0,
+                    sample_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(task_name, route_id)
+                )"""
+            )
             connection.execute(
                 "INSERT INTO bulk_meta(key,value) VALUES('schema_version',?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -743,75 +777,353 @@ class FreeFleetStore:
                 ),
             )
 
-    def get_route_history_stats(self, task_name: str | None = None) -> dict[str, dict[str, Any]]:
+    def get_route_history_stats(
+        self,
+        task_name: str | None = None,
+        half_life_hours: float = 72.0,
+        now: float | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Return time-decayed route stats.
+
+        Weight per attempt is 0.5**(age_hours/half_life_hours). half_life_hours<=0
+        disables decay (weight=1). Totals are effective sample sizes (floats).
+        total_cost is a raw undecayed sum (accounting must not decay).
+        Default 72h discounts stale free-tier behavior without regressing
+        week-old batches to prior on every run.
+        """
+        now_ts = now if now is not None else time.time()
         with self.connect() as connection:
             has_attempts = connection.execute("SELECT count(*) FROM inference_attempts").fetchone()[0]
             if has_attempts > 0:
                 query = """
-                    SELECT route_id, provider,
-                           count(*) as total,
-                           sum(case when outcome='verified' then 1 else 0 end) as completed,
-                           sum(case when parse_status='malformed_json' then 1 else 0 end) as malformed,
-                           sum(case when schema_status='schema_violation' then 1 else 0 end) as schema_violations,
-                           sum(case when grounding_status='grounding_failed' then 1 else 0 end) as grounding_failures,
-                           sum(case when transport_status='rate_limit' or error_type='rate_limit' then 1 else 0 end) as rate_limits,
-                           avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
-                           sum(case when cost is not null then cost else 0 end) as total_cost
+                    SELECT route_id, provider, outcome, parse_status, schema_status,
+                           grounding_status, transport_status, error_type,
+                           duration_seconds, cost, started_at, created_at, task_name
                     FROM inference_attempts
                 """
                 params: list[Any] = []
                 if task_name:
                     query += " WHERE task_name=?"
                     params.append(task_name)
-                query += " GROUP BY route_id, provider"
+                query += " ORDER BY created_at ASC"
                 rows = connection.execute(query, params).fetchall()
-                stats = {}
+                stats: dict[str, dict[str, Any]] = {}
                 for r in rows:
-                    stats[r["route_id"]] = {
-                        "route_id": r["route_id"],
-                        "provider": r["provider"],
-                        "total": r["total"],
-                        "completed": r["completed"] or 0,
-                        "malformed": r["malformed"] or 0,
-                        "schema_violations": r["schema_violations"] or 0,
-                        "grounding_failures": r["grounding_failures"] or 0,
-                        "rate_limits": r["rate_limits"] or 0,
-                        "avg_duration": float(r["avg_duration"] or 0.0),
-                        "total_cost": float(r["total_cost"] or 0.0),
-                    }
+                    rid = r["route_id"]
+                    ts = _parse_iso_ts(r["started_at"]) or _parse_iso_ts(r["created_at"])
+                    w = _decay_weight(ts, now_ts, half_life_hours)
+                    entry = stats.get(rid)
+                    if entry is None:
+                        entry = {
+                            "route_id": rid,
+                            "provider": r["provider"],
+                            "total": 0.0,
+                            "completed": 0.0,
+                            "malformed": 0.0,
+                            "schema_violations": 0.0,
+                            "grounding_failures": 0.0,
+                            "rate_limits": 0.0,
+                            "duration_weighted_sum": 0.0,
+                            "duration_weight": 0.0,
+                            "total_cost": 0.0,
+                        }
+                        stats[rid] = entry
+                    entry["provider"] = r["provider"]
+                    entry["total"] += w
+                    if r["outcome"] == "verified":
+                        entry["completed"] += w
+                    if r["parse_status"] == "malformed_json":
+                        entry["malformed"] += w
+                    if r["schema_status"] == "schema_violation":
+                        entry["schema_violations"] += w
+                    if r["grounding_status"] == "grounding_failed":
+                        entry["grounding_failures"] += w
+                    if r["transport_status"] == "rate_limit" or r["error_type"] == "rate_limit":
+                        entry["rate_limits"] += w
+                    if r["duration_seconds"] is not None:
+                        try:
+                            dur = float(r["duration_seconds"])
+                        except (TypeError, ValueError):
+                            dur = 0.0
+                        entry["duration_weighted_sum"] += w * max(0.0, dur)
+                        entry["duration_weight"] += w
+                    if r["cost"] is not None:
+                        try:
+                            entry["total_cost"] += float(r["cost"])
+                        except (TypeError, ValueError):
+                            pass
+                for entry in stats.values():
+                    dw = entry.pop("duration_weight")
+                    dsum = entry.pop("duration_weighted_sum")
+                    entry["avg_duration"] = float(dsum / dw) if dw > 0 else 0.0
+                    entry["total_cost"] = float(entry["total_cost"])
                 return stats
 
             # Fallback to model_runs for legacy data
             query = """
-                SELECT requested_route, provider,
-                       count(*) as total,
-                       sum(case when status='complete' then 1 else 0 end) as completed,
-                       sum(case when error like '%429%' or error like '%rate limit%' then 1 else 0 end) as rate_limits,
-                       avg(case when duration_seconds is not null then duration_seconds else 0 end) as avg_duration,
-                       sum(case when cost is not null then cost else 0 end) as total_cost
+                SELECT requested_route, provider, status, error,
+                       duration_seconds, cost, created_at, run_id
                 FROM model_runs
             """
             params: list[Any] = []
             if task_name:
                 query += " WHERE run_id IN (SELECT r.run_id FROM runs r JOIN task_revisions t ON t.revision_id=r.task_revision_id WHERE t.task_name=?)"
                 params.append(task_name)
-            query += " GROUP BY requested_route, provider"
+            query += " ORDER BY created_at ASC"
             rows = connection.execute(query, params).fetchall()
             stats = {}
             for r in rows:
-                stats[r["requested_route"]] = {
-                    "route_id": r["requested_route"],
-                    "provider": r["provider"],
-                    "total": r["total"],
-                    "completed": r["completed"] or 0,
-                    "malformed": 0,
-                    "schema_violations": 0,
-                    "grounding_failures": 0,
-                    "rate_limits": r["rate_limits"] or 0,
-                    "avg_duration": float(r["avg_duration"] or 0.0),
-                    "total_cost": float(r["total_cost"] or 0.0),
-                }
+                rid = r["requested_route"]
+                w = _decay_weight(_parse_iso_ts(r["created_at"]), now_ts, half_life_hours)
+                entry = stats.get(rid)
+                if entry is None:
+                    entry = {
+                        "route_id": rid,
+                        "provider": r["provider"],
+                        "total": 0.0,
+                        "completed": 0.0,
+                        "malformed": 0.0,
+                        "schema_violations": 0.0,
+                        "grounding_failures": 0.0,
+                        "rate_limits": 0.0,
+                        "duration_weighted_sum": 0.0,
+                        "duration_weight": 0.0,
+                        "total_cost": 0.0,
+                    }
+                    stats[rid] = entry
+                entry["provider"] = r["provider"]
+                entry["total"] += w
+                if r["status"] == "complete":
+                    entry["completed"] += w
+                err = str(r["error"] or "")
+                if "429" in err or "rate limit" in err.lower():
+                    entry["rate_limits"] += w
+                if r["duration_seconds"] is not None:
+                    try:
+                        dur = float(r["duration_seconds"])
+                    except (TypeError, ValueError):
+                        dur = 0.0
+                    entry["duration_weighted_sum"] += w * max(0.0, dur)
+                    entry["duration_weight"] += w
+                if r["cost"] is not None:
+                    try:
+                        entry["total_cost"] += float(r["cost"])
+                    except (TypeError, ValueError):
+                        pass
+            for entry in stats.values():
+                dw = entry.pop("duration_weight")
+                dsum = entry.pop("duration_weighted_sum")
+                entry["avg_duration"] = float(dsum / dw) if dw > 0 else 0.0
+                entry["total_cost"] = float(entry["total_cost"])
             return stats
+
+    def get_route_history_stats_pair(
+        self,
+        task_name: str,
+        half_life_hours: float = 72.0,
+        now: float | None = None,
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+        """Return (task_stats, global_stats) from a single history scan.
+
+        Prefer this over two get_route_history_stats calls when both sides are
+        needed (e.g. shrinkage): one DB pass instead of two.
+        """
+        now_ts = now if now is not None else time.time()
+
+        def _new_entry(rid: str, provider: Any) -> dict[str, Any]:
+            return {
+                "route_id": rid,
+                "provider": provider,
+                "total": 0.0,
+                "completed": 0.0,
+                "malformed": 0.0,
+                "schema_violations": 0.0,
+                "grounding_failures": 0.0,
+                "rate_limits": 0.0,
+                "duration_weighted_sum": 0.0,
+                "duration_weight": 0.0,
+                "total_cost": 0.0,
+            }
+
+        def _add_inference(entry: dict[str, Any], r: Any, w: float) -> None:
+            entry["provider"] = r["provider"]
+            entry["total"] += w
+            if r["outcome"] == "verified":
+                entry["completed"] += w
+            if r["parse_status"] == "malformed_json":
+                entry["malformed"] += w
+            if r["schema_status"] == "schema_violation":
+                entry["schema_violations"] += w
+            if r["grounding_status"] == "grounding_failed":
+                entry["grounding_failures"] += w
+            if r["transport_status"] == "rate_limit" or r["error_type"] == "rate_limit":
+                entry["rate_limits"] += w
+            if r["duration_seconds"] is not None:
+                try:
+                    dur = float(r["duration_seconds"])
+                except (TypeError, ValueError):
+                    dur = 0.0
+                entry["duration_weighted_sum"] += w * max(0.0, dur)
+                entry["duration_weight"] += w
+            if r["cost"] is not None:
+                try:
+                    entry["total_cost"] += float(r["cost"])
+                except (TypeError, ValueError):
+                    pass
+
+        def _finalize(stats: dict[str, dict[str, Any]]) -> None:
+            for entry in stats.values():
+                dw = entry.pop("duration_weight")
+                dsum = entry.pop("duration_weighted_sum")
+                entry["avg_duration"] = float(dsum / dw) if dw > 0 else 0.0
+                entry["total_cost"] = float(entry["total_cost"])
+
+        with self.connect() as connection:
+            has_attempts = connection.execute("SELECT count(*) FROM inference_attempts").fetchone()[0]
+            if has_attempts > 0:
+                rows = connection.execute(
+                    """SELECT route_id, provider, outcome, parse_status, schema_status,
+                              grounding_status, transport_status, error_type,
+                              duration_seconds, cost, started_at, created_at, task_name
+                       FROM inference_attempts ORDER BY created_at ASC"""
+                ).fetchall()
+                task_stats: dict[str, dict[str, Any]] = {}
+                global_stats: dict[str, dict[str, Any]] = {}
+                for r in rows:
+                    ts = _parse_iso_ts(r["started_at"]) or _parse_iso_ts(r["created_at"])
+                    w = _decay_weight(ts, now_ts, half_life_hours)
+                    rid = r["route_id"]
+                    g = global_stats.get(rid)
+                    if g is None:
+                        g = _new_entry(rid, r["provider"])
+                        global_stats[rid] = g
+                    _add_inference(g, r, w)
+                    if r["task_name"] == task_name:
+                        t = task_stats.get(rid)
+                        if t is None:
+                            t = _new_entry(rid, r["provider"])
+                            task_stats[rid] = t
+                        _add_inference(t, r, w)
+                _finalize(task_stats)
+                _finalize(global_stats)
+                return task_stats, global_stats
+
+            # Legacy fallback: one joined scan, partitioned in Python.
+            rows = connection.execute(
+                """SELECT mr.requested_route, mr.provider, mr.status, mr.error,
+                          mr.duration_seconds, mr.cost, mr.created_at, t.task_name
+                   FROM model_runs mr
+                   LEFT JOIN runs r ON r.run_id = mr.run_id
+                   LEFT JOIN task_revisions t ON t.revision_id = r.task_revision_id
+                   ORDER BY mr.created_at ASC"""
+            ).fetchall()
+            task_stats = {}
+            global_stats = {}
+            for r in rows:
+                rid = r["requested_route"]
+                w = _decay_weight(_parse_iso_ts(r["created_at"]), now_ts, half_life_hours)
+                g = global_stats.get(rid)
+                if g is None:
+                    g = _new_entry(rid, r["provider"])
+                    global_stats[rid] = g
+                g["provider"] = r["provider"]
+                g["total"] += w
+                if r["status"] == "complete":
+                    g["completed"] += w
+                err = str(r["error"] or "")
+                if "429" in err or "rate limit" in err.lower():
+                    g["rate_limits"] += w
+                if r["duration_seconds"] is not None:
+                    try:
+                        dur = float(r["duration_seconds"])
+                    except (TypeError, ValueError):
+                        dur = 0.0
+                    g["duration_weighted_sum"] += w * max(0.0, dur)
+                    g["duration_weight"] += w
+                if r["cost"] is not None:
+                    try:
+                        g["total_cost"] += float(r["cost"])
+                    except (TypeError, ValueError):
+                        pass
+                if r["task_name"] == task_name:
+                    t = task_stats.get(rid)
+                    if t is None:
+                        t = _new_entry(rid, r["provider"])
+                        task_stats[rid] = t
+                    t["provider"] = r["provider"]
+                    t["total"] += w
+                    if r["status"] == "complete":
+                        t["completed"] += w
+                    if "429" in err or "rate limit" in err.lower():
+                        t["rate_limits"] += w
+                    if r["duration_seconds"] is not None:
+                        try:
+                            dur = float(r["duration_seconds"])
+                        except (TypeError, ValueError):
+                            dur = 0.0
+                        t["duration_weighted_sum"] += w * max(0.0, dur)
+                        t["duration_weight"] += w
+                    if r["cost"] is not None:
+                        try:
+                            t["total_cost"] += float(r["cost"])
+                        except (TypeError, ValueError):
+                            pass
+            _finalize(task_stats)
+            _finalize(global_stats)
+            return task_stats, global_stats
+
+    def update_route_claim_bias(
+        self, task_name: str, route_id: str, errors: list[float]
+    ) -> dict[str, Any]:
+        """Update running mean bias (predicted-actual) for a route/task.
+
+        errors: per-sample predicted minus actual in claim-score units (0-100 scale).
+        Returns the updated {route_id, bias, sample_count}.
+        """
+        if not errors:
+            raise ValueError("errors must be non-empty")
+        batch_mean = sum(float(e) for e in errors) / len(errors)
+        batch_n = len(errors)
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT bias, sample_count FROM route_claim_bias WHERE task_name=? AND route_id=?",
+                (task_name, route_id),
+            ).fetchone()
+            if row is None:
+                bias, count = batch_mean, batch_n
+            else:
+                prev_n = int(row["sample_count"] or 0)
+                prev_bias = float(row["bias"] or 0.0)
+                count = prev_n + batch_n
+                bias = (prev_bias * prev_n + batch_mean * batch_n) / count if count else batch_mean
+            connection.execute(
+                """INSERT INTO route_claim_bias(task_name, route_id, bias, sample_count, updated_at)
+                   VALUES(?,?,?,?,?)
+                   ON CONFLICT(task_name, route_id) DO UPDATE SET
+                   bias=excluded.bias, sample_count=excluded.sample_count, updated_at=excluded.updated_at""",
+                (task_name, route_id, bias, count, now_iso()),
+            )
+            return {"task_name": task_name, "route_id": route_id, "bias": bias, "sample_count": count}
+
+    def get_route_claim_bias(self, task_name: str | None = None) -> dict[str, dict[str, Any]]:
+        with self.connect() as connection:
+            if task_name:
+                rows = connection.execute(
+                    "SELECT * FROM route_claim_bias WHERE task_name=?", (task_name,)
+                ).fetchall()
+            else:
+                rows = connection.execute("SELECT * FROM route_claim_bias").fetchall()
+        out: dict[str, dict[str, Any]] = {}
+        for r in rows:
+            key = f"{r['task_name']}:{r['route_id']}" if task_name is None else str(r["route_id"])
+            out[key] = {
+                "task_name": r["task_name"],
+                "route_id": r["route_id"],
+                "bias": float(r["bias"]),
+                "sample_count": int(r["sample_count"]),
+                "updated_at": r["updated_at"],
+            }
+        return out
 
     def get_run_status(self, run_id: str) -> RunStatusReport:
         with self.connect() as connection:

@@ -201,8 +201,10 @@ class RouteCatalog:
             is_cooling = cd_until is not None and cd_until > now
 
             status_str = "COOLING" if is_cooling else ("ACTIVE" if enabled else "DISABLED")
-            total = stat.get("total", 0)
-            completed = stat.get("completed", 0)
+            # History totals are decayed effective sample sizes (floats); round
+            # for display while keeping full precision for scoring.
+            total = round(float(stat.get("total", 0)), 2)
+            completed = round(float(stat.get("completed", 0)), 2)
             success_rate = (completed / total * 100.0) if total > 0 else None
 
             summary.append({
@@ -216,8 +218,8 @@ class RouteCatalog:
                 "total_attempts": total,
                 "completed": completed,
                 "success_rate": success_rate,
-                "rate_limits": stat.get("rate_limits", 0),
-                "avg_duration": stat.get("avg_duration", 0.0),
+                "rate_limits": round(float(stat.get("rate_limits", 0)), 2),
+                "avg_duration": round(float(stat.get("avg_duration", 0.0)), 2),
                 "cooldown_until": cd_until,
                 "cooldown_remaining_sec": round(max(0.0, cd_until - now), 1) if is_cooling else 0.0,
                 "last_verified": last_verified,
@@ -280,6 +282,24 @@ class RouteCatalog:
         policy: Optional[Any] = None,
     ) -> List[str]:
         """Returns an intelligently prioritized list of route IDs based on historical performance and eval scores."""
+        ranked, _ = self.get_ladder_with_scores(
+            task_seed=task_seed,
+            provider=provider,
+            free_only=free_only,
+            task_name=task_name,
+            policy=policy,
+        )
+        return ranked
+
+    def get_ladder_with_scores(
+        self,
+        task_seed: str = "",
+        provider: Optional[str] = None,
+        free_only: bool = True,
+        task_name: Optional[str] = None,
+        policy: Optional[Any] = None,
+    ) -> tuple[List[str], dict[str, float]]:
+        """Like get_ladder but also returns the score map from the same scoring pass."""
         effective_free_only = free_only
         if policy is not None:
             # Explicit --free-only overrides; otherwise paid-aware policy disables free-only filter
@@ -301,9 +321,9 @@ class RouteCatalog:
             )
         )]
         if not routes:
-            return []
-        from .scoring import filter_and_rank_routes
-        return filter_and_rank_routes(
+            return [], {}
+        from .scoring import rank_with_scores
+        return rank_with_scores(
             routes=routes,
             store=self.store,
             task_name=task_name,

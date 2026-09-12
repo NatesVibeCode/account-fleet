@@ -107,7 +107,7 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
         instructions: Annotated[str | None, Field(description="Optional custom instructions overriding the preset default")] = None,
         batch_size: Annotated[int, Field(ge=1, le=50, description="Inference batch size")] = 4,
     ) -> TaskRegistrationResult:
-        """Initialize and register a typed task from a built-in preset (score, filter, account-research, triage, classify, extract, summarize)."""
+        """Initialize and register a typed task from a built-in preset (score, filter, triage, classify, extract, summarize)."""
         spec = create_task_from_preset(task_name, preset_name=preset, instructions=instructions, batch_size=batch_size)
         revision = store.register_task(spec)
         return TaskRegistrationResult(task=spec.name, revision=revision)
@@ -242,11 +242,21 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
         top_n: Annotated[int | None, Field(description="Limit output to top N records")] = None,
         rank: Annotated[bool, Field(description="Prepend a 1-indexed rank column in CSV export")] = False,
         filter_expr: Annotated[str | None, Field(description="Filter records by condition (e.g. 'passed=true', 'score>=80')")] = None,
+        adjust_scores: Annotated[bool, Field(description="Rank by bias-adjusted scores when multiple raters produced the run")] = False,
+        score_field: Annotated[str, Field(description="Numeric claim field bias applies to")] = "score",
     ) -> CleanPacket:
-        """Export verified records as a self-validating typed packet (JSON) or flat CSV."""
+        """Export verified records as a self-validating typed packet (JSON) or flat CSV. For comparable ranking, pin Phase-B to one judge route; use adjust_scores only when mixed raters are unavoidable."""
         snapshot = store.run_snapshot(run_id)
         default_ext = "csv" if export_format == "csv" else ("jsonl" if export_format == "jsonl" else "json")
         destination = workspace.path(output_path) if output_path else workspace.path(f"runs/{run_id}/clean_packet.{default_ext}")
+        bias_map: dict[str, float] | None = None
+        if adjust_scores:
+            try:
+                task_name = (snapshot.get("task") or {}).get("name")
+                raw_bias = store.get_route_claim_bias(task_name) if task_name else {}
+                bias_map = {v["route_id"]: v["bias"] for v in raw_bias.values()}
+            except Exception:
+                bias_map = None
         packet = export_clean_packet(
             snapshot,
             destination,
@@ -256,6 +266,8 @@ def create_mcp_server(workspace_root: str | Path, db_path: str | Path | None = N
             top=top_n,
             rank=rank,
             filter_expr=filter_expr,
+            bias_map=bias_map,
+            score_field=score_field,
         )
         return CleanPacket.model_validate(packet)
 
