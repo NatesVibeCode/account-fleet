@@ -76,6 +76,7 @@ class RouteEvaluator:
         rate_limits = 0
         errors = 0
         durations: List[float] = []
+        bias_errors: List[float] = []
 
         for res in raw_results:
             item = res["item"]
@@ -191,34 +192,47 @@ class RouteEvaluator:
             })
             self.store.record_inference_attempt(attempt_rec)
 
-            # Check correctness if expected claims provided in item metadata
+            # Check correctness if expected claims provided in item metadata.
+            # Accuracy stays exact (no tolerance): tolerance would inflate small
+            # scales (e.g. 1-5 Likert) where any answer is within 5. Numeric pairs
+            # are separately recorded as rater bias for export calibration.
             if expected_claims_key and expected_claims_key in item.metadata:
                 expected_raw = item.metadata[expected_claims_key]
                 actual_claims = candidate.items[0].claims
                 if isinstance(expected_raw, dict):
                     if actual_claims == expected_raw:
                         correct_count += 1
-                elif str(actual_claims.get(expected_claims_key, "")).lower() == str(expected_raw).lower():
-                    correct_count += 1
+                else:
+                    try:
+                        bias_errors.append(
+                            float(actual_claims.get(expected_claims_key, "")) - float(expected_raw)  # type: ignore[arg-type]
+                        )
+                    except (ValueError, TypeError):
+                        pass
+                    if str(actual_claims.get(expected_claims_key, "")).lower() == str(expected_raw).lower():
+                        correct_count += 1
 
         avg_lat = (sum(durations) / len(durations)) if durations else 0.0
         schema_rate = (schema_passed / total) if total > 0 else 0.0
         grounding_rate = (grounding_passed / total) if total > 0 else 0.0
         accuracy = (correct_count / total) if (expected_claims_key and total > 0) else None
 
-        # Latency score normalized (0-30s)
-        lat_score = max(0.1, 1.0 - (min(30.0, avg_lat) / 30.0) * 0.5)
-
-        # Composite score
-        if accuracy is not None:
-            comp = 0.35 * schema_rate + 0.35 * grounding_rate + 0.20 * accuracy + 0.10 * lat_score
+        if total <= 0:
+            comp = 0.0
         else:
-            comp = 0.45 * schema_rate + 0.45 * grounding_rate + 0.10 * lat_score
+            # Latency score normalized (0-30s)
+            lat_score = max(0.1, 1.0 - (min(30.0, avg_lat) / 30.0) * 0.5)
 
-        if rate_limits > 0:
-            comp *= max(0.2, 1.0 - (rate_limits / total) * 0.5)
+            # Composite score
+            if accuracy is not None:
+                comp = 0.35 * schema_rate + 0.35 * grounding_rate + 0.20 * accuracy + 0.10 * lat_score
+            else:
+                comp = 0.45 * schema_rate + 0.45 * grounding_rate + 0.10 * lat_score
 
-        comp = round(max(0.0, min(1.0, comp)), 3)
+            if rate_limits > 0:
+                comp *= max(0.2, 1.0 - (rate_limits / total) * 0.5)
+
+            comp = round(max(0.0, min(1.0, comp)), 3)
 
         result = RouteEvalResult(
             route_id=route_id,
@@ -250,6 +264,12 @@ class RouteEvaluator:
             "avg_latency_seconds": avg_lat,
             "composite_score": comp,
         })
+        # Persist rater bias for bias-adjusted export ranking (numeric goldens only).
+        if bias_errors and hasattr(self.store, "update_route_claim_bias"):
+            try:
+                self.store.update_route_claim_bias(self.task.name, route_id, bias_errors)
+            except Exception:
+                pass
 
         return result
 

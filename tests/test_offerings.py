@@ -38,7 +38,7 @@ from free_fleet.input_data import load_input_items
 from free_fleet.models import CandidateExtractedItem, InputItem, QuoteCandidate, RoutePolicy, TaskSpec
 from free_fleet.packer import pack_items
 from free_fleet.store import FreeFleetStore
-from free_fleet.task import load_task_spec
+from free_fleet.task import create_task_from_preset, load_task_spec
 
 
 def test_quickstart_demo(tmp_path: Path):
@@ -315,15 +315,17 @@ def test_account_research_pipeline(tmp_path: Path):
         verification_source="test",
     )
 
-    task_file = Path("examples/account_research/task.json")
-    accounts_csv = Path("examples/account_research/sample_accounts.csv")
-    assert task_file.is_file()
-    assert accounts_csv.is_file()
-
-    spec = load_task_spec(task_file)
+    spec = create_task_from_preset("research-score-test", preset_name="score")
     store.register_task(spec)
 
-    items = load_input_items(accounts_csv)
+    sample_csv = tmp_path / "samples.csv"
+    with open(sample_csv, "w", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["item_id", "text"])
+        for i in range(10):
+            writer.writerow([f"item_{i}", f"This is document number {i} providing sufficient text to extract verbatim proof from the source."])
+
+    items = load_input_items(sample_csv)
     assert len(items) == 10
 
     engine = Engine(task=spec, store=store, policy=RoutePolicy(allowed_routes=["demo/fake"], free_only=True))
@@ -332,7 +334,7 @@ def test_account_research_pipeline(tmp_path: Path):
     packet = engine.run_campaign(
         raw_items=items,
         run_id=run_id,
-        input_path=str(accounts_csv),
+        input_path=str(sample_csv),
         concurrency=2,
         max_attempts=20,
         output_packet_path=packet_path,

@@ -24,6 +24,7 @@ class Engine:
         max_attempts_per_batch: int = 3,
         policy: Optional[RoutePolicy] = None,
         registry: Optional[ProviderRegistry] = None,
+        session_stickiness_tolerance: float = 0.10,
     ):
         self.task = task
         self.store = store or (catalog.store if catalog else BulkLanesStore())
@@ -31,6 +32,10 @@ class Engine:
         self.max_attempts_per_batch = max_attempts_per_batch
         self.policy = policy
         self.registry = registry or ProviderRegistry()
+        # Session route is pinned first only while within tolerance of the best
+        # score. Beyond that the ranked ladder wins and the session migrates to
+        # the route that actually verifies (see execute_batch success path).
+        self.session_stickiness_tolerance = max(0.0, float(session_stickiness_tolerance))
 
     @property
     def opencode_prov(self):
@@ -81,15 +86,23 @@ class Engine:
 
         user_content = self.task.render_prompt(simplified_items)
 
-        # Get route ladder with intelligent ranking and active policy filtering
-        available_routes = self.catalog.get_ladder(
+        # Get route ladder with intelligent ranking and active policy filtering.
+        # Session affinity is kept only while the session route scores within
+        # tolerance of the best route; otherwise the ranked ladder wins and the
+        # session migrates to whichever route actually verifies (success path).
+        available_routes, route_scores = self.catalog.get_ladder_with_scores(
             task_seed=str(items[0]["item_id"]) if items else "",
             free_only=True,
             task_name=self.task.name,
             policy=self.policy,
         )
         if session and session.route_id in available_routes and not self.catalog.is_cooled_down(session.route_id):
-            ladder = [session.route_id] + [r for r in available_routes if r != session.route_id]
+            best = max((route_scores.get(r, 0.0) for r in available_routes), default=0.0)
+            sess_score = route_scores.get(session.route_id, 0.0)
+            if best - sess_score <= self.session_stickiness_tolerance:
+                ladder = [session.route_id] + [r for r in available_routes if r != session.route_id]
+            else:
+                ladder = list(available_routes)
         else:
             ladder = list(available_routes)
 
@@ -282,11 +295,18 @@ class Engine:
             if self.store:
                 self.store.record_inference_attempt(attempt_record)
 
-            # Record session success
+            # Record session success; migrate affinity to the route that verified.
             if session:
                 tokens = receipt.get("usage", {}).get("total_tokens", 0) if isinstance(receipt.get("usage"), dict) else 0
                 cost = receipt.get("cost", 0.0) or 0.0
                 session.record_batch_success(items_count=len(output_items), tokens=tokens, cost=cost)
+                if session.route_id != route_id:
+                    session.route_id = route_id
+                    session.provider = (
+                        (route_info.get("provider") if isinstance(route_info, dict) else None)
+                        or receipt.get("provider")
+                        or session.provider
+                    )
 
             return True, [item.model_dump(mode="json") for item in output_items], receipt, None
 

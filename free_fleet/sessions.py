@@ -64,7 +64,7 @@ class SessionPool:
         for i in range(self.num_sessions):
             sid = f"sess_{i+1:02d}_{uuid.uuid4().hex[:8]}"
             route_id = self.routes[i % len(self.routes)] if self.routes else "opencode/big-pickle"
-            provider = "openrouter" if "openrouter" in route_id else "opencode"
+            provider = route_id.split("/", 1)[0] if "/" in route_id else "unknown"
             self.sessions[sid] = WorkerSession(
                 session_id=sid,
                 worker_idx=i + 1,
