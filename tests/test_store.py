@@ -29,7 +29,8 @@ def test_schema_has_recovered_control_plane_tables(tmp_path):
         "runs", "batches", "batch_attempts", "model_runs", "batch_results", "current_batch_results", "worker_sessions",
         "route_cooldowns", "route_evaluations", "inference_attempts",
     } <= tables
-    assert store.schema_version() == "2"
+    assert store.schema_version() == "4"
+    assert {"profile_revisions", "active_profiles"} <= tables
     with store.connect() as connection:
         task_columns = {row[1] for row in connection.execute("PRAGMA table_info(task_revisions)")}
     assert "spec_json" not in task_columns

@@ -2,6 +2,7 @@ import json
 from argparse import Namespace
 
 from free_fleet import cli
+from free_fleet.profile import IdealCompanyProfile
 from free_fleet.store import BulkLanesStore
 
 
@@ -36,6 +37,21 @@ def test_validate_is_offline_and_strict(tmp_path, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["valid"] is True
     assert payload["input_items"] == 1
+
+
+def test_profile_command_persists_ideal_company_profile(tmp_path, capsys):
+    profile_path = tmp_path / "ideal_company_profile.json"
+    db_path = tmp_path / "state.db"
+    profile = IdealCompanyProfile(profile_name="Database Buyers", required_stack=["PostgreSQL"])
+    profile.save(profile_path)
+
+    cli.cmd_profile(Namespace(path=str(profile_path), init=False, force=False, db=str(db_path), json=True))
+
+    payload = json.loads(capsys.readouterr().out)
+    stored = BulkLanesStore(db_path)
+    assert payload["profile_kind"] == "ideal_company"
+    assert stored.load_profile().model_dump() == profile.model_dump()
+    assert stored.active_profile_revision_id() == payload["revision"]
 
 
 def test_json_flag_works_before_command():
@@ -305,5 +321,4 @@ def test_init_presets_score_and_account_research(tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["created"] is True
     assert "passed" in out["claims_schema"]["properties"]
-
 
