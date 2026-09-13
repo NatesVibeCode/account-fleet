@@ -4,13 +4,23 @@ import sys
 
 import pytest
 
-from free_fleet.mcp_server import Workspace
+from free_fleet.mcp_server import Workspace, create_mcp_server
 
 
 def test_workspace_rejects_escape(tmp_path):
     workspace = Workspace(tmp_path)
     with pytest.raises(ValueError, match="escapes workspace"):
         workspace.path("../outside.json")
+
+
+def test_mcp_honors_bulk_lanes_database_environment(tmp_path, monkeypatch):
+    configured = tmp_path / "configured.db"
+    monkeypatch.setenv("BULK_LANES_DB", str(configured))
+
+    create_mcp_server(tmp_path)
+
+    assert configured.exists()
+    assert not (tmp_path / "free-fleet.db").exists()
 
 
 def test_mcp_tool_error_does_not_kill_server(tmp_path):
@@ -60,9 +70,11 @@ def test_mcp_tool_error_does_not_kill_server(tmp_path):
     assert responses[1]["result"]["isError"] is True
     assert responses[2]["id"] == 3
     tools = responses[2]["result"]["tools"]
-    assert len(tools) == 14
+    assert len(tools) == 16
     tool_names = {tool["name"] for tool in tools}
     assert "free_fleet_init" in tool_names
+    assert "free_fleet_save_profile" in tool_names
+    assert "free_fleet_get_profile" in tool_names
     assert "free_fleet_status" in tool_names
     assert "free_fleet_eval" in tool_names
     assert "free_fleet_cooldowns" in tool_names
