@@ -302,14 +302,11 @@ class RouteCatalog:
         """Like get_ladder but also returns the score map from the same scoring pass."""
         effective_free_only = free_only
         if policy is not None:
-            # Explicit --free-only overrides; otherwise paid-aware policy disables free-only filter
+            # Paid lanes require explicit route approval. Cost ceilings constrain
+            # an approved route; they do not grant permission to use paid routes.
             if getattr(policy, "free_only", False):
                 effective_free_only = True
-            elif (
-                getattr(policy, "max_cost_per_1k_input", 0.0) > 0
-                or getattr(policy, "max_cost_per_1k_output", 0.0) > 0
-                or getattr(policy, "allowed_routes", None)
-            ):
+            elif getattr(policy, "allowed_routes", None):
                 effective_free_only = False
         routes = self.get_routes(provider=provider, free_only=effective_free_only)
         # Demo output is synthetic and must never enter a real campaign implicitly.
@@ -358,11 +355,7 @@ class RouteCatalog:
             if policy:
                 if getattr(policy, "free_only", False):
                     run_is_free_only = True
-                elif (
-                    getattr(policy, "max_cost_per_1k_input", 0.0) > 0
-                    or getattr(policy, "max_cost_per_1k_output", 0.0) > 0
-                    or getattr(policy, "allowed_routes", None)
-                ):
+                elif getattr(policy, "allowed_routes", None):
                     run_is_free_only = False
 
             if reported_cost == 0:

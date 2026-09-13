@@ -111,7 +111,12 @@ def test_record_cost_paid_policy_within_spend_limit(tmp_path):
     }
     cat.save()
 
-    policy = RoutePolicy(max_cost_per_1k_input=2.0, max_cost_per_1k_output=3.0, max_request_cost=0.10)
+    policy = RoutePolicy(
+        allowed_routes=["r_paid"],
+        max_cost_per_1k_input=2.0,
+        max_cost_per_1k_output=3.0,
+        max_request_cost=0.10,
+    )
     cat.record_cost("r_paid", reported_cost=0.025, policy=policy)
 
     assert cat.data["routes"][0]["enabled"] is True
@@ -129,13 +134,36 @@ def test_record_cost_paid_policy_exceeding_max_request_cost(tmp_path):
     }
     cat.save()
 
-    policy = RoutePolicy(max_cost_per_1k_input=2.0, max_cost_per_1k_output=3.0, max_request_cost=0.01)
+    policy = RoutePolicy(
+        allowed_routes=["r_paid"],
+        max_cost_per_1k_input=2.0,
+        max_cost_per_1k_output=3.0,
+        max_request_cost=0.01,
+    )
     with pytest.raises(RouteCircuitBreaker) as exc:
         cat.record_cost("r_paid", reported_cost=0.05, policy=policy)
 
     assert "exceeded policy max_request_cost" in str(exc.value)
     assert cat.data["routes"][0]["enabled"] is False
     assert "max_request_cost" in cat.data["routes"][0]["disabled_reason"]
+
+
+def test_cost_limits_do_not_approve_paid_routes(tmp_path):
+    cat = RouteCatalog(config_path=tmp_path / "routes.json")
+    cat.data = {
+        "revision": 1,
+        "routes": [
+            {"id": "r_paid", "enabled": True, "price_state": "unknown", "cost_per_1k_input": 1.0, "cost_per_1k_output": 2.0},
+            {"id": "r_free", "enabled": True, "price_state": "price_observed_zero"},
+        ],
+    }
+    cat.save()
+
+    policy = RoutePolicy(max_cost_per_1k_input=2.0, max_cost_per_1k_output=3.0, max_request_cost=0.10)
+    ladder = cat.get_ladder(policy=policy, free_only=True)
+
+    assert "r_paid" not in ladder
+    assert "r_free" in ladder
 
 
 def test_add_route_cost_safety_defaults(tmp_path):
