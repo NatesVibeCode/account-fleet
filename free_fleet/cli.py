@@ -367,7 +367,10 @@ def cmd_test(args: argparse.Namespace) -> None:
     task = _resolve_task(args.task, store)
     items = _load_input(args)
     policy = _extract_policy(args)
-    batch = pack_items(items[: task.batch_size], task.batch_size, task.max_slice_chars)[0]
+    batches = pack_items(items[: task.batch_size], task.batch_size, task.max_slice_chars)
+    if not batches:
+        raise ValueError("input contains no packable items to test")
+    batch = batches[0]
     engine = Engine(task=task, store=store, policy=policy)
     ok, results, receipt, error = engine.execute_batch(batch)
     _emit(
