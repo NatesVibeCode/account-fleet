@@ -29,7 +29,7 @@ from free_fleet.discover import (
     write_items_jsonl,
 )
 from free_fleet.input_data import load_input_items
-from free_fleet.models import ID_PATTERN
+from free_fleet.models import ID_PATTERN, InputItem
 
 
 @pytest.fixture(autouse=True)
@@ -328,6 +328,39 @@ def test_run_discovery_fetch_failures_are_skipped(monkeypatch):
     assert items == [] and report["skipped"][0]["reason"] == "boom"
 
 
+def test_run_discovery_reports_source_coverage_and_preserves_backend(monkeypatch):
+    monkeypatch.setattr(discover, "search_ddgs", lambda q, max_results=10: [
+        SearchHit(url="https://a.example/", title="A", backend="ddgs"),
+        SearchHit(url="https://b.example/", title="B", backend="ddgs"),
+    ])
+    monkeypatch.setattr(discover, "fetch_smart_url", lambda url, **kw: RawRecord(
+        text=f"Full source for {url}", source_uri=url, title="full"
+    ))
+
+    items, report = run_discovery(["q"], backends=["ddgs"], delay=0, min_source_coverage=0.7)
+
+    assert len(items) == 2
+    assert report["source_quality"]["coverage"] == 1.0
+    assert report["source_quality"]["meets_threshold"] is True
+    assert report["source_quality"]["backends"]["ddgs"]["captured"] == 2
+    assert items[0].metadata["discovery_backend"] == "ddgs"
+    assert items[0].metadata["discovery_query"] == "q"
+    assert items[0].metadata["discovered_from"] == items[0].source_uri
+
+
+def test_run_discovery_snippets_preserve_lineage(monkeypatch):
+    monkeypatch.setattr(discover, "search_ddgs", lambda q, max_results=10: [
+        SearchHit(url="https://a.example/", title="A", snippet="indicator", backend="ddgs"),
+    ])
+
+    items, report = run_discovery(["q"], backends=["ddgs"], fetch_full_text=False, delay=0)
+
+    assert report["source_quality"]["coverage"] == 1.0
+    assert items[0].metadata["discovery_query"] == "q"
+    assert items[0].metadata["discovered_from"] == "https://a.example/"
+    assert items[0].metadata["evidence"] == "indicator"
+
+
 # --- CLI ---------------------------------------------------------------------
 
 def test_cli_discover_writes_file(tmp_path, monkeypatch, capsys):
@@ -345,6 +378,52 @@ def test_cli_discover_writes_file(tmp_path, monkeypatch, capsys):
                                ignore_robots=False, output=str(out), format="csv", json=True))
     payload = json.loads(capsys.readouterr().out)
     assert payload["items"] == 1 and out.is_file()
+
+
+def test_cli_discover_enforces_minimum_source_coverage(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "run_discovery", lambda **kw: (
+        [InputItem(item_id="one", text="source", source_uri="https://a.example/")],
+        {
+            "queries": ["q"],
+            "hits": 10,
+            "items": 1,
+            "skipped": [],
+            "source_quality": {
+                "captured": 1,
+                "attempted": 10,
+                "coverage": 0.1,
+                "meets_threshold": False,
+            },
+        },
+    ))
+
+    with pytest.raises(DiscoverError, match="below the minimum"):
+        cli.cmd_discover(Namespace(
+            query=["q"], backend=["hn"], searxng_url=None, max_results=10,
+            snippets_only=False, delay=0, timeout=5, max_chars=None, js=False,
+            ignore_robots=True, output=str(tmp_path / "out.csv"), format="csv", json=False,
+            min_source_coverage=0.7,
+        ))
+
+
+def test_cli_fetch_enforces_minimum_source_coverage(tmp_path, monkeypatch):
+    def fake_fetch(url, **kwargs):
+        if url.endswith("/bad"):
+            raise DiscoverError("unreadable")
+        return RawRecord(text="usable source", source_uri=url)
+
+    monkeypatch.setattr(cli, "fetch_smart_url", fake_fetch)
+    out = tmp_path / "fetched.csv"
+
+    with pytest.raises(DiscoverError, match="below the minimum"):
+        cli.cmd_fetch(Namespace(
+            url=["https://a.example/good", "https://a.example/bad"], url_file=None,
+            greenhouse_board=None, ashby_org=None, lever_org=None, max_jobs=None,
+            delay=0, timeout=5, max_chars=None, ignore_robots=True, output=str(out),
+            format="csv", json=False, min_source_coverage=0.7,
+        ))
+
+    assert not out.exists()
 
 
 def test_cli_fetch_needs_a_source(tmp_path):

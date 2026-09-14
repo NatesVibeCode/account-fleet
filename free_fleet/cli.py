@@ -989,10 +989,33 @@ def _format_skips(skipped: list[dict[str, str]], limit: int = 3) -> str:
     return f"\nSkipped ({len(skipped)}):\n{lines}{extra}"
 
 
+def _coverage_value(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number between 0.0 and 1.0") from exc
+    if not 0.0 <= parsed <= 1.0:
+        raise argparse.ArgumentTypeError("must be a number between 0.0 and 1.0")
+    return parsed
+
+
+def _capture_quality(captured: int, skipped: int, threshold: float | None) -> dict[str, Any]:
+    attempted = captured + skipped
+    coverage = captured / attempted if attempted else 0.0
+    return {
+        "threshold": threshold,
+        "attempted": attempted,
+        "captured": captured,
+        "coverage": round(coverage, 3),
+        "meets_threshold": threshold is None or (attempted > 0 and coverage >= threshold),
+    }
+
+
 def cmd_discover(args: argparse.Namespace) -> None:
     backends = args.backend or ["ddgs", "hn"]
     fmt = getattr(args, "format", "csv") or "csv"
     snippets_only = bool(getattr(args, "snippets_only", False))
+    min_source_coverage = getattr(args, "min_source_coverage", None)
     items, report = run_discovery(
         queries=args.query,
         backends=backends,
@@ -1009,7 +1032,17 @@ def cmd_discover(args: argparse.Namespace) -> None:
         se_site=getattr(args, "se_site", None) or "stackoverflow",
         discourse_url=getattr(args, "discourse_url", None),
         lemmy_instance=getattr(args, "lemmy_instance", None) or "https://programming.dev",
+        min_source_coverage=min_source_coverage,
     )
+    source_quality = report.get("source_quality") or {}
+    if min_source_coverage is not None and source_quality and not source_quality.get("meets_threshold", False):
+        coverage = float(source_quality.get("coverage", 0.0))
+        captured = int(source_quality.get("captured", len(items)))
+        attempted = int(source_quality.get("attempted", report.get("hits", 0)))
+        raise DiscoverError(
+            f"source coverage {coverage:.1%} ({captured}/{attempted}) is below the "
+            f"minimum {float(min_source_coverage):.1%}; narrow the query or use a healthier source"
+        )
     output = _write_discovered(items, getattr(args, "output", None), fmt, f"accounts.{fmt}", report["skipped"])
     skipped = report["skipped"]
     indicator_note = (
@@ -1021,6 +1054,11 @@ def cmd_discover(args: argparse.Namespace) -> None:
         {"items": len(items), "output": output, "format": fmt, "report": report},
         args.json,
         f"Discovered {len(items)} items from {report['hits']} hits -> {output}."
+        + (
+            f" Source coverage: {float(source_quality.get('coverage', 0.0)):.1%}"
+            f" ({source_quality.get('captured', len(items))}/{source_quality.get('attempted', report['hits'])})."
+            if source_quality else ""
+        )
         + _format_skips(skipped) + indicator_note,
     )
 
@@ -1208,11 +1246,23 @@ def cmd_fetch(args: argparse.Namespace) -> None:
                 _time.sleep(delay)
 
     items = to_input_items(records, max_chars=getattr(args, "max_chars", None))
+    min_source_coverage = getattr(args, "min_source_coverage", None)
+    source_quality = _capture_quality(len(items), len(skipped), min_source_coverage)
+    if min_source_coverage is not None and not source_quality["meets_threshold"]:
+        raise DiscoverError(
+            f"source coverage {source_quality['coverage']:.1%} "
+            f"({source_quality['captured']}/{source_quality['attempted']}) is below the "
+            f"minimum {float(min_source_coverage):.1%}; fix or narrow the source set"
+        )
     output = _write_discovered(items, getattr(args, "output", None), fmt, f"fetched.{fmt}", skipped)
     _emit(
-        {"items": len(items), "output": output, "format": fmt, "skipped": skipped},
+        {"items": len(items), "output": output, "format": fmt, "skipped": skipped,
+         "source_quality": source_quality},
         args.json,
-        f"Fetched {len(items)} items -> {output}." + _format_skips(skipped),
+        f"Fetched {len(items)} items -> {output}."
+        f" Source coverage: {source_quality['coverage']:.1%}"
+        f" ({source_quality['captured']}/{source_quality['attempted']})."
+        + _format_skips(skipped),
     )
 
 
@@ -1423,6 +1473,8 @@ def build_parser() -> argparse.ArgumentParser:
     discover.add_argument("--delay", type=float, default=1.0, help="Politeness delay between fetches in seconds (default: 1.0)")
     discover.add_argument("--timeout", type=float, default=20.0, help="HTTP timeout in seconds (default: 20.0)")
     discover.add_argument("--max-chars", type=int, default=None, help="Truncate item text to N chars (default: none)")
+    discover.add_argument("--min-source-coverage", type=_coverage_value, default=0.70,
+                          help="Require at least this fraction of unique hits to become captured items (default: 0.70; use 0 to disable)")
     discover.add_argument("--ignore-robots", action="store_true", help="Ignore robots.txt (default: respect it)")
     discover.add_argument("--js", action="store_true", help="Render JS-heavy pages via Playwright (experimental; needs account-fleet[js])")
     discover.add_argument("--output", help="Output file (default: accounts.<format>)")
@@ -1463,6 +1515,8 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--delay", type=float, default=1.0, help="Politeness delay between fetches in seconds (default: 1.0)")
     fetch.add_argument("--timeout", type=float, default=20.0, help="HTTP timeout in seconds (default: 20.0)")
     fetch.add_argument("--max-chars", type=int, default=None, help="Truncate item text to N chars (default: none)")
+    fetch.add_argument("--min-source-coverage", type=_coverage_value, default=0.70,
+                       help="Require at least this fraction of attempted source items to be captured (default: 0.70; use 0 to disable)")
     fetch.add_argument("--ignore-robots", action="store_true", help="Ignore robots.txt (default: respect it)")
     fetch.add_argument("--output", help="Output file (default: fetched.<format>)")
     fetch.add_argument("--format", choices=["csv", "jsonl"], default="csv", help="Output format (default: csv)")

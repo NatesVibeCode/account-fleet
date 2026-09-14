@@ -2210,6 +2210,7 @@ def run_discovery(
     se_site: str = "stackoverflow",
     discourse_url: str | None = None,
     lemmy_instance: str = LEMMY_DEFAULT,
+    min_source_coverage: float | None = None,
 ) -> tuple[list[InputItem], dict[str, Any]]:
     """Search queries broadly, fetch hits, return (items, report).
 
@@ -2221,12 +2222,18 @@ def run_discovery(
     tier-1 claims. Re-run without ``--snippets-only`` for grounding-grade
     full text.
     """
+    if min_source_coverage is not None and not 0.0 <= min_source_coverage <= 1.0:
+        raise DiscoverError("min_source_coverage must be between 0.0 and 1.0")
     if render_js:
         require_playwright()
     backends = _validate_backends(backends, searxng_url, discourse_url)
     records: list[RawRecord] = []
     skipped: list[dict[str, str]] = []
     hits_seen = 0
+    backend_metrics: dict[str, dict[str, int]] = {
+        backend: {"queries": 0, "hits": 0, "unique_hits": 0, "captured": 0, "skipped": 0}
+        for backend in backends
+    }
     with httpx.Client(timeout=timeout, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
         for query in queries:
             if not query.strip():
@@ -2235,36 +2242,90 @@ def run_discovery(
             seen_urls: set[str] = set()
             ordered: list[SearchHit] = []
             for backend in backends:
+                metrics = backend_metrics.setdefault(
+                    backend, {"queries": 0, "hits": 0, "unique_hits": 0, "captured": 0, "skipped": 0}
+                )
+                metrics["queries"] += 1
                 try:
-                    for hit in _run_backend(backend, query, max_results, searxng_url, client,
-                                            reddit_subreddits, se_tagged, se_site,
-                                            discourse_url, lemmy_instance):
+                    backend_hits = _run_backend(backend, query, max_results, searxng_url, client,
+                                                reddit_subreddits, se_tagged, se_site,
+                                                discourse_url, lemmy_instance)
+                    metrics["hits"] += len(backend_hits)
+                    for hit in backend_hits:
                         key = canonical_url(hit.url)
                         if key in seen_urls:
                             continue
                         seen_urls.add(key)
                         ordered.append(hit)
+                        metrics["unique_hits"] += 1
                 except DiscoverError as exc:
                     skipped.append({"query": query, "backend": backend, "reason": str(exc)})
             if not ordered:
                 skipped.append({"query": query, "reason": "0 hits from backends"})
             for hit in ordered:
                 hits_seen += 1
+                metrics = backend_metrics.setdefault(
+                    hit.backend or "unknown",
+                    {"queries": 0, "hits": 0, "unique_hits": 0, "captured": 0, "skipped": 0},
+                )
                 if not fetch_full_text:
                     records.append(RawRecord(
                         text=hit.snippet or hit.title,
                         source_uri=hit.url,
                         title=hit.title or None,
                         item_id=record_id(hit.url, hit.title),
-                        metadata={"backend": hit.backend, "evidence": "indicator"},
+                        metadata={
+                            "backend": hit.backend,
+                            "discovery_backend": hit.backend,
+                            "discovery_query": query,
+                            "discovered_from": hit.url,
+                            "evidence": "indicator",
+                        },
                     ))
                     continue
                 try:
-                    records.append(fetch_smart_url(hit.url, client=client, respect_robots=respect_robots,
-                                                   render_js=render_js))
+                    fetched = fetch_smart_url(hit.url, client=client, respect_robots=respect_robots,
+                                               render_js=render_js)
+                    fetched.metadata.update({
+                        "discovery_backend": hit.backend,
+                        "discovery_query": query,
+                        "discovered_from": hit.url,
+                    })
+                    records.append(fetched)
                 except DiscoverError as exc:
                     skipped.append({"url": hit.url, "reason": str(exc)})
+                    metrics["skipped"] += 1
                 if delay > 0:
                     time.sleep(delay)
     items = to_input_items(records, max_chars=max_chars)
-    return items, {"queries": list(queries), "hits": hits_seen, "items": len(items), "skipped": skipped}
+    for item in items:
+        backend = item.metadata.get("discovery_backend") or item.metadata.get("backend") or "unknown"
+        metrics = backend_metrics.setdefault(
+            str(backend), {"queries": 0, "hits": 0, "unique_hits": 0, "captured": 0, "skipped": 0}
+        )
+        metrics["captured"] += 1
+    attempted = sum(metrics["unique_hits"] for metrics in backend_metrics.values())
+    captured = len(items)
+    coverage = (captured / attempted) if attempted else 0.0
+    source_quality = {
+        "threshold": min_source_coverage,
+        "attempted": attempted,
+        "captured": captured,
+        "coverage": round(coverage, 3),
+        "meets_threshold": min_source_coverage is None or (attempted > 0 and coverage >= min_source_coverage),
+        "backends": {
+            backend: {
+                **metrics,
+                "coverage": round(metrics["captured"] / metrics["unique_hits"], 3)
+                if metrics["unique_hits"] else None,
+            }
+            for backend, metrics in backend_metrics.items()
+        },
+    }
+    return items, {
+        "queries": list(queries),
+        "hits": hits_seen,
+        "items": len(items),
+        "skipped": skipped,
+        "source_quality": source_quality,
+    }

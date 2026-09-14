@@ -125,6 +125,18 @@ account-fleet fetch --url https://example.com/blog/scaling-postgres --output acc
 account-fleet fetch --url https://example.com/app --js --output accounts.csv
 ```
 
+### Source quality floor
+
+Mechanical discovery and fetch commands require at least 70% source capture
+by default. A run is measured as captured items divided by attempted source
+items; a mostly failed or empty source set stops before an output file is
+written. Use `--json` to inspect `source_quality`, including per-backend
+counts for `discover` and aggregate counts for `fetch`. Fetched discovery
+records also keep `discovery_backend`, `discovery_query`, and
+`discovered_from` metadata so later scoring can identify where each record
+came from. Set `--min-source-coverage 0` only when intentionally auditing a
+known-bad or sparse source.
+
 Article parsing prefers `trafilatura`, then `readability-lxml`, then a stdlib
 fallback that skips nav/footer/chat chrome (all three in the `discover`
 extra, which also adds `pypdf` for PDF URLs). Fetching is polite by default:
