@@ -244,6 +244,13 @@ You can pass `--openrouter-providers` as a comma-separated list or as repeatable
 
 ---
 
+## Source Quality
+
+Mechanical `discover` and `fetch` runs enforce a default 70% source-capture
+floor and report backend/query provenance for fetched records. Use `--json`
+for the `source_quality` report; lower the floor with
+`--min-source-coverage 0` only for an intentional sparse-source audit.
+
 ## SQLite Control Plane
 
 `free-fleet` uses SQLite in WAL mode with `BEGIN IMMEDIATE` atomic leases. If a worker crashes or a laptop closes, the run can be resumed seamlessly:
