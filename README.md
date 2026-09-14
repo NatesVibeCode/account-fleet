@@ -50,7 +50,7 @@ rank,item_id,score,identified_gap,fit_tier,primary_quote_text
 1,stripe.com,92,"Legacy billing migration",tier_1,"lead migration off legacy v1 billing pipeline to Kafka"
 ```
 
-Illustrative values only; real exports also include source URLs, digests, and quote details. Set your ICP and scoring rubric through `init --instructions` or a task JSON file. An exact source quote proves the text exists, not that a company will buy your product.
+Illustrative values only; real exports also include source URLs, digests, and quote details. Set your ICP and scoring rubric in the task's `TaskSpec` — a preset plus a task JSON file, or the studio's scoring panel. An exact source quote proves the text exists, not that a company will buy your product.
 
 ---
 
