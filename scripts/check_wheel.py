@@ -12,7 +12,7 @@ import venv
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--distribution", choices=("account-fleet", "free-fleet"), required=True)
+    parser.add_argument("--distribution", choices=("account-fleet",), required=True)
     parser.add_argument("--offline-system-deps", action="store_true", help="Reuse installed dependencies when offline; does not verify dependency installation")
     args = parser.parse_args()
     repository = Path(__file__).resolve().parents[1]
@@ -31,10 +31,10 @@ def main():
         workspace = root / "sales workspace"
         workspace.mkdir()
         env = {key: value for key, value in os.environ.items() if not key.startswith((
-            "PYTHONPATH", "FREE_FLEET", "BULK_LANES", "OPENROUTER", "OPENAI", "OLLAMA", "LMSTUDIO", "VLLM", "GROQ", "CEREBRAS", "OPENCODE",
+            "PYTHONPATH", "HARNESS_FLEET", "OPENROUTER", "OPENAI", "OLLAMA", "LMSTUDIO", "VLLM", "GROQ", "CEREBRAS", "OPENCODE",
         ))}
         cli = bindir / (args.distribution + (".exe" if os.name == "nt" else ""))
-        subprocess.run([str(python), "-c", "import free_fleet, sys; from pathlib import Path; assert Path(free_fleet.__file__).is_relative_to(Path(sys.prefix)), free_fleet.__file__"], cwd=workspace, env=env, check=True)
+        subprocess.run([str(python), "-c", "import harness_fleet, sys; from pathlib import Path; assert Path(harness_fleet.__file__).is_relative_to(Path(sys.prefix)), harness_fleet.__file__"], cwd=workspace, env=env, check=True)
 
         def run(*command):
             completed = subprocess.run([str(cli), *command, "--json"], cwd=workspace, env=env, capture_output=True, text=True, encoding="utf-8")
@@ -44,7 +44,7 @@ def main():
 
         setup = run("setup", "--workspace-root", str(workspace))
         assert Path(setup["stdio_server"]["command"]).parent.resolve() == bindir.resolve(), setup["stdio_server"]
-        assert (workspace / ".agents/skills/free-fleet/SKILL.md").is_file()
+        assert (workspace / ".agents/skills/harness-fleet/SKILL.md").is_file()
         if args.distribution == "account-fleet":
             assert (workspace / ".agents/skills/account-fleet/references/mcp-recipes.md").is_file()
             run("profile", "--init")
