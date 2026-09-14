@@ -852,6 +852,26 @@ def test_demo_provider_short_slice_quote_min_chars():
     assert len(quote) >= 15
 
 
+def test_demo_provider_disambiguates_repeated_quote_with_offsets():
+    from free_fleet.providers.demo import DemoProvider
+    demo = DemoProvider()
+    source = "Introducing Browserbase Agents: One Prompt, One API Call.\n" * 2
+    prompt = (
+        'instructions\n{"input_items": [{"item_id": "i1", "sections": '
+        '[{"slice_id": "full", "start": 0, "end": ' + str(len(source)) + ', '
+        '"text": ' + json.dumps(source) + '}], "title": "demo"}], '
+        '"output_schema": {"properties": {"items": {"items": '
+        '{"properties": {"claims": {"type": "object", "properties": '
+        '{"val": {"type": "string"}}}}}}}}}'
+    )
+    ok, resp, receipt = demo.run_prompt("demo", prompt)
+    assert ok is True
+    assert receipt["status"] == "complete"
+    quote = json.loads(resp)["items"][0]["quotes"][0]
+    assert quote["start"] == 0
+    assert quote["end"] == len(quote["text"])
+
+
 def test_demo_provider_nested_object_properties():
     from free_fleet.providers.demo import _value_for_spec
     spec = {
@@ -872,4 +892,3 @@ def test_session_pool_empty_routes_raises():
     from free_fleet.sessions import SessionPool
     with pytest.raises(ValueError, match="SessionPool requires at least one route"):
         SessionPool(num_sessions=2, routes=[])
-
