@@ -8,7 +8,7 @@
 
 Local outbound intelligence engine for high-throughput, evidence-grounded account research across free, paid, and local LLMs — with SQLite checkpointing, 4-layer compounding funnels, and deterministic quote verification.
 
-*Canonical CLI is `account-fleet`. (`harness-fleet` remains available as an alias).*
+*Canonical CLI is `account-fleet`. The harness-fleet and career-fleet distributions ship their own entry points from their own checkouts — install one fleet per environment.*
 
 Python 3.10+ is required. This is a command-line tool with an optional AI-assistant integration. It scores source text you supply; the CLI does not browse for companies or fetch job postings automatically. The bundled account-fleet skill guides a connected assistant through that research.
 
