@@ -379,6 +379,7 @@ Free routes are used by default. A paid route approved in an earlier session mus
 | `db backup` | SQLite backup to file (safe while running) |
 | `schema` | Print admitted JSON Schemas or database contracts |
 | `mcp install` | One-command Claude/Cursor setup (auto-wires `claude_desktop_config.json` / `mcp.json`) |
+| `board` | Serve the read-only results board for a run: every attribute, the checklist behind each score, verbatim quotes, and provenance (`--run-id`, `--port`, `--open`, `--json`) |
 | `serve` | Run the Model Context Protocol (MCP) server over stdio |
 | `discover` | Broad web search (`ddgs`, self-hosted SearXNG, HN Algolia, YC, Reddit, Stack Exchange, Discourse, Lobsters, Lemmy, Dev.to) to an accounts file |
 | `fetch` | Fetch URLs, sitemaps, site crawls, ATS boards (Greenhouse/Ashby/Lever), YC profiles, HN/Reddit threads, or Q&A forums to an accounts file |
