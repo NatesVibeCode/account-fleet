@@ -6,9 +6,31 @@
 
 > **Research and score target accounts with traceable source evidence. Quotes are checked against the source at exact character offsets. Scores and interpretations still need human review.**
 
-Local outbound intelligence engine for high-throughput, evidence-grounded account research across free, paid, and local LLMs — with SQLite checkpointing, 4-layer compounding funnels, and deterministic quote verification.
+Account Fleet turns a description of the customers you want into a researched, scored shortlist. Every score comes with the exact sentence from the source that justifies it, so you can check the reasoning instead of trusting a summary. It runs on free or local AI models by default, narrows large lists in stages so you only pay attention to the best candidates, and keeps everything in a local file you own.
 
 *Canonical CLI is `account-fleet`. The harness-fleet and career-fleet distributions ship their own entry points from their own checkouts — install one fleet per environment.*
+
+## Start here (no coding needed)
+
+Copy and paste these one at a time. Nothing here needs an account, an API key, or any money.
+
+1. **Install** (the three `pip` lines set up a private environment for the tool):
+   ```bash
+   git clone https://github.com/NatesVibeCode/account-fleet.git && cd account-fleet
+   python3 -m venv .venv && source .venv/bin/activate
+   python -m pip install .
+   ```
+   On Windows PowerShell use `py -m venv .venv` and `.venv\Scripts\Activate.ps1` instead of the middle line.
+2. **See it work** on ten bundled sample accounts, using a built-in fake model:
+   ```bash
+   mkdir my-workspace && cd my-workspace
+   account-fleet setup
+   account-fleet quickstart --demo --run-id demo-01
+   ```
+   Results land in `runs/demo-01/` as a spreadsheet-friendly CSV plus a self-checking JSON packet.
+3. **Ask your assistant.** Restart Claude Desktop (or Cursor) and describe your ideal customer in plain words; the bundled `account-fleet` skill turns that into research, scoring, and a ranked shortlist with quotes.
+
+Real research needs a model provider configured (free options included) and your own qualification criteria — see [Quickstart](#quickstart--60-second-demo-no-api-keys) below.
 
 ## Which fleet do I want?
 

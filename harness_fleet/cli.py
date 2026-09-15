@@ -1083,7 +1083,7 @@ def cmd_quickstart(args: argparse.Namespace) -> None:
     _emit(
         {"run_id": run_id, "packet": str(output.resolve()), "csv": str(csv_output.resolve()), "result": packet, "verified": packet["total_verified_records"]},
         args.json,
-        f"Demo run '{run_id}' completed.\nPacket: {output.resolve()}\nCSV: {csv_output.resolve()}\nVerified records: {packet['total_verified_records']}\nTry: harness-fleet status {run_id} --json | harness-fleet export {run_id} --format jsonl",
+        f"Demo run '{run_id}' completed.\nPacket: {output.resolve()}\nCSV: {csv_output.resolve()}\nVerified records: {packet['total_verified_records']}\nTry: account-fleet status {run_id} --json | account-fleet export {run_id} --format jsonl",
     )
 
 
