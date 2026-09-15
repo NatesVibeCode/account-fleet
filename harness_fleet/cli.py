@@ -513,7 +513,7 @@ def cmd_init(args: argparse.Namespace) -> None:
         sample = InputItem(item_id="item_1", title="Example", text="Replace this text with the source you want to process.")
         sample_path.write_text(json.dumps(sample.model_dump(mode="json", by_alias=True), ensure_ascii=False) + "\n")
     next_validate = shlex.join([
-        "harness-fleet", "validate", spec.name, "--input", str(sample_path),
+        "account-fleet", "validate", spec.name, "--input", str(sample_path),
         "--db", str(store.path.resolve()), "--workspace-root", str(workspace),
     ])
     _emit(
@@ -947,7 +947,7 @@ def cmd_setup(args: argparse.Namespace) -> None:
     _emit(
         report,
         args.json,
-        f"Configured harness-fleet at {report.skill_path}.\n"
+        f"Configured account-fleet at {report.skill_path}.\n"
         f"Database: {report.database}\nNext:\n{next_lines}",
     )
 
@@ -1207,7 +1207,7 @@ def cmd_mcp_install(args: argparse.Namespace) -> None:
             servers = {}
             existing["mcpServers"] = servers
 
-        already = servers.get("harness-fleet")
+        already = servers.get("account-fleet")
         force = bool(getattr(args, "force", False))
         needs_update = force or already != server_entry
         if not needs_update:
@@ -1219,7 +1219,7 @@ def cmd_mcp_install(args: argparse.Namespace) -> None:
 
         if needs_update and not dry_run:
             config_path.parent.mkdir(parents=True, exist_ok=True)
-            servers["harness-fleet"] = server_entry
+            servers["account-fleet"] = server_entry
             # Preserve other keys (e.g., globalShortcut)
             config_path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
 
@@ -1237,7 +1237,7 @@ def cmd_mcp_install(args: argparse.Namespace) -> None:
         "\n".join(
             f"{r['client']}: {r['status']} at {r['config_path']}\n  -> {r['server']['command']} {' '.join(r['server']['args'])}"
             for r in results
-        ) + f"\nRestart {', '.join(r['client'] for r in results)} to load harness-fleet. Verify with: harness-fleet doctor --workspace-root {workspace_root} --json",
+        ) + f"\nRestart {', '.join(r['client'] for r in results)} to load account-fleet. Verify with: account-fleet doctor --workspace-root {workspace_root} --json",
     )
 
 
@@ -1608,7 +1608,7 @@ def _common(parser: argparse.ArgumentParser, *, json_output: bool = True, databa
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="harness-fleet",
+        prog="account-fleet",
         description="Coordinated free LLM worker fleet for bulk classification, extraction, summarization, and triage",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {_package_version()}")

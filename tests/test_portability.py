@@ -45,11 +45,12 @@ def test_missing_survivor_file_fails_instead_of_silently_emptying_campaign(tmp_p
         load_input_items(source, only_ids=tmp_path / "missing.csv")
 
 
-def test_cli_prog_and_mcp_install_use_harness_name(tmp_path, monkeypatch):
+def test_cli_prog_and_mcp_install_use_this_distributions_name(tmp_path, monkeypatch):
+    """This distribution names itself, not the engine package it vendors."""
     import harness_fleet.cli as cli_module
 
-    assert cli_module.build_parser().prog == "harness-fleet"
-    monkeypatch.setattr("sys.argv", ["harness-fleet", "doctor"])
+    assert cli_module.build_parser().prog == "account-fleet"
+    monkeypatch.setattr("sys.argv", ["account-fleet", "doctor"])
     assert cli_module._package_version()
 
     config = tmp_path / "mcp.json"
@@ -61,7 +62,8 @@ def test_cli_prog_and_mcp_install_use_harness_name(tmp_path, monkeypatch):
     )
     cmd_mcp_install(args)
     installed = json.loads(config.read_text(encoding="utf-8"))
-    assert "harness-fleet" in installed["mcpServers"]
+    assert "account-fleet" in installed["mcpServers"]
+    assert "harness-fleet" not in installed["mcpServers"]
     assert "free-fleet" not in installed["mcpServers"]
 
 
