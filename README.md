@@ -28,7 +28,8 @@ Copy and paste these one at a time. Nothing here needs an account, an API key, o
    account-fleet quickstart --demo --run-id demo-01
    ```
    Results land in `runs/demo-01/` as a spreadsheet-friendly CSV plus a self-checking JSON packet.
-3. **Ask your assistant.** Restart Claude Desktop (or Cursor) and describe your ideal customer in plain words; the bundled `account-fleet` skill turns that into research, scoring, and a ranked shortlist with quotes.
+3. **Get free model access** — about two minutes, no credit card needed: **[FREE-ACCESS.md](FREE-ACCESS.md)**. The demo uses a built-in fake model; real research needs one of these connected.
+4. **Ask your assistant.** Restart Claude Desktop (or Cursor) and describe your ideal customer in plain words; the bundled `account-fleet` skill turns that into research, scoring, and a ranked shortlist with quotes.
 
 Real research needs a model provider configured (free options included) and your own qualification criteria — see [Quickstart](#quickstart--60-second-demo-no-api-keys) below.
 
