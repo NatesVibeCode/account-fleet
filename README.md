@@ -10,6 +10,19 @@ Local outbound intelligence engine for high-throughput, evidence-grounded accoun
 
 *Canonical CLI is `account-fleet`. The harness-fleet and career-fleet distributions ship their own entry points from their own checkouts — install one fleet per environment.*
 
+## Which fleet do I want?
+
+Every distribution shares one engine — typed claims, SQLite checkpoints, and character-exact quote verification — and ships the assistant skills below. Install one per environment.
+
+| If you want to… | Install | CLI | Skill that drives it |
+| --- | --- | --- | --- |
+| Turn an ICP into **scored target accounts** | **account-fleet** ← you are here | `account-fleet` | `account-fleet` |
+| Score, classify, extract, or triage **your own** text at volume | [harness-fleet](https://github.com/NatesVibeCode/harness-fleet) | `harness-fleet` | `harness-fleet` |
+| Find and rank **employers and job postings** | [career-fleet](https://github.com/NatesVibeCode/career-fleet) | `career-fleet` | `career-fleet` |
+| Find **implementation partners and SIs** | harness-fleet, preset `partner-research` | `harness-fleet` | `partner-fleet` |
+
+**New here?** Install below → run the offline demo → then point the bundled skill at your own list. Skills land in `<workspace>/.agents/skills/` — see [Assistant skills](#assistant-skills-what-installs-where).
+
 Python 3.10+ is required. This is a command-line tool with an optional AI-assistant integration. It scores source text you supply; the CLI does not browse for companies or fetch job postings automatically. The bundled account-fleet skill guides a connected assistant through that research.
 
 Install and try the offline demo below before running a real list. Real research requires a configured model provider and your own qualification criteria.
@@ -346,6 +359,21 @@ Pass `--json` to any command for machine-readable JSON output. `--free-only` is 
 
 
 ---
+
+## Assistant skills (what installs where)
+
+Skills are the playbooks your AI client reads to drive this CLI. `account-fleet setup` installs every skill this distribution bundles into `<workspace>/.agents/skills/`:
+
+| Skill | Installed as | Drives |
+| --- | --- | --- |
+| `account-fleet` | `.agents/skills/account-fleet/` | This CLI: ICP decomposition, discovery playbook, scoring rubric, MCP recipes |
+| `harness-fleet` | `.agents/skills/harness-fleet/` | The shared engine underneath: task contracts, runs, export, MCP, troubleshooting |
+
+Each skill is plain markdown — a `SKILL.md` plus a `references/` folder. Read them straight from this repo under `skills/`, or preview what setup would install:
+
+```bash
+account-fleet setup --workspace-root "$PWD" --dry-run --json
+```
 
 ## MCP Server
 
