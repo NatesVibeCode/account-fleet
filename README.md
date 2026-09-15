@@ -14,13 +14,15 @@ Account Fleet turns a description of the customers you want into a researched, s
 
 Copy and paste these one at a time. Nothing here needs an account, an API key, or any money.
 
-1. **Install** (the three `pip` lines set up a private environment for the tool):
+1. **Install.** macOS/Linux: `./install.sh` · Windows: `powershell -ExecutionPolicy Bypass -File install.ps1`
+   It makes its own private Python environment, sets up a workspace, and connects Claude Desktop or Cursor for you.
+
+   Prefer a terminal one-liner to the installer? This puts the CLI on your PATH without cloning anything:
    ```bash
-   git clone https://github.com/NatesVibeCode/account-fleet.git && cd account-fleet
-   python3 -m venv .venv && source .venv/bin/activate
-   python -m pip install .
+   uv tool install "git+https://github.com/NatesVibeCode/account-fleet"
+   # or, without uv:  python3 -m pip install "git+https://github.com/NatesVibeCode/account-fleet"
    ```
-   On Windows PowerShell use `py -m venv .venv` and `.venv\Scripts\Activate.ps1` instead of the middle line.
+   Do not use `pip install account-fleet` from PyPI: that entry is the retired free-fleet 0.2.4 build, which installs a `free-fleet` command and none of the current features.
 2. **See it work** on ten bundled sample accounts, using a built-in fake model:
    ```bash
    mkdir my-workspace && cd my-workspace
@@ -108,6 +110,9 @@ Every output row is gated through deterministic checks *before* it is committed 
 ---
 
 ## Quickstart — 60-Second Demo (No API Keys)
+
+Already installed with the one-click installer above? Jump to the `account-fleet setup` line.
+The steps below are the from-source path.
 
 ```bash
 git clone https://github.com/NatesVibeCode/account-fleet.git
